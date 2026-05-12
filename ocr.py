@@ -8,17 +8,22 @@ import numpy as np
 from PIL import Image, ImageOps
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+INPUT_DIR = Path("input")
+OUTPUT_DIR = Path("output")
 
 
 def find_images() -> list[Path]:
+    INPUT_DIR.mkdir(exist_ok=True)
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
     images = [
         path
-        for path in Path(".").iterdir()
+        for path in INPUT_DIR.iterdir()
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     ]
     if not images:
         extensions = ", ".join(sorted(IMAGE_EXTENSIONS))
-        raise FileNotFoundError(f"Положи изображения рядом со скриптом: {extensions}")
+        raise FileNotFoundError(f"Положи изображения в папку {INPUT_DIR}: {extensions}")
     return sorted(images)
 
 
@@ -35,7 +40,7 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
     reader = easyocr.Reader(["ru", "en"], gpu=False)
 
 for image_path in image_paths:
-    result_path = image_path.with_suffix(".txt")
+    result_path = OUTPUT_DIR / f"{image_path.stem}.txt"
     if result_path.exists():
         print(f"Пропускаю, уже есть результат: {result_path}")
         continue

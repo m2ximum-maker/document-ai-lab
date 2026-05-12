@@ -27,15 +27,17 @@ env/
 .idea/
 .DS_Store
 
-# OCR input images
+# OCR files
+/input/*
+/output/*
 *.jpg
 *.jpeg
 *.png
 *.JPG
 *.JPEG
 *.PNG
-
-# OCR output text files
 *.txt
 
+!input/.gitkeep
+!output/.gitkeep
 !requirements.txt
