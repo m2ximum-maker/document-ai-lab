@@ -1,6 +1,5 @@
 import contextlib
 import io
-import textwrap
 from pathlib import Path
 
 import easyocr
@@ -10,11 +9,14 @@ from PIL import Image, ImageOps
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 INPUT_DIR = Path("input")
 OUTPUT_DIR = Path("output")
+RAW_OUTPUT_DIR = OUTPUT_DIR / "raw"
+CLEANED_OUTPUT_DIR = OUTPUT_DIR / "cleaned"
 
 
 def find_images() -> list[Path]:
     INPUT_DIR.mkdir(exist_ok=True)
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    RAW_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    CLEANED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     images = [
         path
@@ -28,9 +30,22 @@ def find_images() -> list[Path]:
 
 
 def clean_text(lines: list[str]) -> str:
-    text = " ".join(line.strip() for line in lines if line.strip())
-    return textwrap.fill(text, width=100)
+    cleaned = [line.strip() for line in lines if line.strip()]
 
+    result = []
+    current = []
+
+    for line in cleaned:
+        current.append(line)
+
+        if line.endswith((".", ":")):
+            result.append(" ".join(current))
+            current = []
+
+    if current:
+        result.append(" ".join(current))
+
+    return "\n".join(result)
 
 image_paths = find_images()
 print(f"Найдено изображений: {len(image_paths)}")
@@ -40,9 +55,11 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
     reader = easyocr.Reader(["ru", "en"], gpu=False)
 
 for image_path in image_paths:
-    result_path = OUTPUT_DIR / f"{image_path.stem}.txt"
-    if result_path.exists():
-        print(f"Пропускаю, уже есть результат: {result_path}")
+    raw_path = RAW_OUTPUT_DIR / f"{image_path.stem}.txt"
+    cleaned_path = CLEANED_OUTPUT_DIR / f"{image_path.stem}.txt"
+
+    if raw_path.exists() and cleaned_path.exists():
+        print(f"Пропускаю, уже есть результат: {cleaned_path}")
         continue
 
     print(f"Обрабатываю: {image_path}")
@@ -51,8 +68,13 @@ for image_path in image_paths:
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         lines = [str(line) for line in reader.readtext(np.array(image), detail=0)]
 
-    text = clean_text(lines)
-    result_path.write_text(f"Источник: {image_path.name}\n\n{text}\n", encoding="utf-8")
-    print(f"Сохранено: {result_path}")
+    raw_text = "\n".join(lines)
+    cleaned_text = clean_text(lines)
+
+    raw_path.write_text(f"Источник: {image_path.name}\n\n{raw_text}\n", encoding="utf-8")
+    cleaned_path.write_text(f"Источник: {image_path.name}\n\n{cleaned_text}\n", encoding="utf-8")
+
+    print(f"Сохранено raw: {raw_path}")
+    print(f"Сохранено cleaned: {cleaned_path}")
 
 print("\nГотово")

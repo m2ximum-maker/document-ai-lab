@@ -29,7 +29,9 @@ env/
 
 # OCR files
 /input/*
-/output/*
+/output/*.txt
+/output/raw/*
+/output/cleaned/*
 *.jpg
 *.jpeg
 *.png
@@ -40,4 +42,6 @@ env/
 
 !input/.gitkeep
 !output/.gitkeep
+!output/raw/.gitkeep
+!output/cleaned/.gitkeep
 !requirements.txt
