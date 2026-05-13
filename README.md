@@ -5,14 +5,16 @@
 ## Pipeline
 
 1. Изображения кладутся в `input/`.
-2. Скрипт ищет `.jpg`, `.jpeg`, `.png`.
+2. `src/ocr.py` ищет `.jpg`, `.jpeg`, `.png`.
 3. Фото приводится к правильной ориентации через EXIF.
 4. EasyOCR распознает текст.
-5. Результат сохраняется в две папки:
+5. OCR-результат сохраняется в две папки:
    - `output/raw/` — исходные строки EasyOCR
    - `output/cleaned/` — немного очищенный текст
+6. `src/chunk.py` режет `output/cleaned/*.txt` на чанки.
+7. Чанки сохраняются в `output/chunks/chunks.jsonl`.
 
-Если для изображения уже есть оба результата, оно пропускается.
+OCR-результаты перезаписываются при каждом запуске `src/ocr.py`.
 
 ## EXIF Issue
 
@@ -29,6 +31,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python src/ocr.py
+python src/chunk.py
 ```
 
 ## Что сделано
@@ -38,6 +41,10 @@ python src/ocr.py
 - EXIF normalization
 - batch processing
 - JPG-first pipeline
+- [x] Chunking MVP
+- cleaned txt → chunks.jsonl
+- source file metadata
+- chunk index metadata
 
 
 ## Что Дальше
@@ -46,10 +53,6 @@ python src/ocr.py
 
 - [ ] Add more sample documents
 - build small local document archive
-
-- [ ] Chunking
-- split OCR text into chunks
-- attach metadata (source file, chunk index)
 
 - [ ] Embeddings
 - generate embeddings for chunks
