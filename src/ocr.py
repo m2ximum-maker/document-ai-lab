@@ -60,9 +60,8 @@ for image_path in image_paths:
     raw_path = RAW_OUTPUT_DIR / f"{image_path.stem}.txt"
     cleaned_path = CLEANED_OUTPUT_DIR / f"{image_path.stem}.txt"
 
-    if raw_path.exists() and cleaned_path.exists():
-        print(f"Пропускаю, уже есть результат: {cleaned_path}")
-        continue
+    if raw_path.exists() or cleaned_path.exists():
+        print(f"Перезаписываю результат: {image_path.name}")
 
     print(f"Обрабатываю: {image_path}")
     image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
@@ -74,7 +73,7 @@ for image_path in image_paths:
     cleaned_text = clean_text(lines)
 
     raw_path.write_text(f"Источник: {image_path.name}\n\n{raw_text}\n", encoding="utf-8")
-    cleaned_path.write_text(f"Источник: {image_path.name}\n\n{cleaned_text}\n", encoding="utf-8")
+    cleaned_path.write_text(f"{cleaned_text}\n", encoding="utf-8")
 
     print(f"Сохранено raw: {raw_path}")
     print(f"Сохранено cleaned: {cleaned_path}")
