@@ -8,6 +8,7 @@ INPUT_DIR = ROOT_DIR / "output" / "cleaned"
 OUTPUT_DIR = ROOT_DIR / "output" / "chunks"
 CHUNKS_OUTPUT_FILE = OUTPUT_DIR / "chunks.jsonl"
 
+
 def main() -> None: 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -26,7 +27,7 @@ def main() -> None:
         chunks = splitter.split_text(text)
         
         for index, chunk in enumerate(chunks):
-            parsed_сhunk = {
+            parsed_chunk = {
                 "text": chunk,
                 "metadata": {
                     "source": file_path.name,
@@ -34,7 +35,7 @@ def main() -> None:
                 },
             }
         
-            all_chunks.append(parsed_сhunk)
+            all_chunks.append(parsed_chunk)
 
     with open(CHUNKS_OUTPUT_FILE, "w", encoding="utf-8") as f:
         for item in all_chunks:
