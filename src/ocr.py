@@ -6,9 +6,10 @@ import easyocr
 import numpy as np
 from PIL import Image, ImageOps
 
+ROOT_DIR = Path(__file__).resolve().parent.parent
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
-INPUT_DIR = Path("input")
-OUTPUT_DIR = Path("output")
+INPUT_DIR = ROOT_DIR / "input"
+OUTPUT_DIR = ROOT_DIR / "output"
 RAW_OUTPUT_DIR = OUTPUT_DIR / "raw"
 CLEANED_OUTPUT_DIR = OUTPUT_DIR / "cleaned"
 
@@ -46,6 +47,7 @@ def clean_text(lines: list[str]) -> str:
         result.append(" ".join(current))
 
     return "\n".join(result)
+
 
 image_paths = find_images()
 print(f"Найдено изображений: {len(image_paths)}")

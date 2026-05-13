@@ -28,7 +28,7 @@
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python ocr.py
+python src/ocr.py
 ```
 
 ## Что сделано

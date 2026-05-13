@@ -40,6 +40,10 @@ env/
 *.PNG
 *.txt
 
+# Chunk files
+/output/chunks/*
+!output/chunks/.gitkeep
+
 !input/.gitkeep
 !output/.gitkeep
 !output/raw/.gitkeep
