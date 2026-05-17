@@ -49,8 +49,8 @@ OCR-результаты перезаписываются при каждом з
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python src/ocr.py
-python src/chunk.py
+python -m src.ocr
+python -m src.chunk
 ```
 
 ## Что сделано

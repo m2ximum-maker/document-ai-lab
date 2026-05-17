@@ -3,6 +3,8 @@ import json
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pathlib import Path
 
+from src.schemas import Chunk
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
 INPUT_DIR = ROOT_DIR / "output" / "cleaned"
 OUTPUT_CHUNKS_DIR = ROOT_DIR / "output" / "chunks"
@@ -20,14 +22,14 @@ def main() -> None:
         chunk_overlap=150,
     )
 
-    all_chunks = []
+    all_chunks: list[Chunk] = []
 
     for file_path in text_files:
         text = file_path.read_text(encoding="utf-8")
         chunks = splitter.split_text(text)
         
         for index, chunk in enumerate(chunks):
-            parsed_chunk = {
+            parsed_chunk: Chunk = {
                 "text": chunk,
                 "metadata": {
                     "source": file_path.name,
