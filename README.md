@@ -78,11 +78,23 @@ python -m src.embed
 
 ## Commit Stats
 
-- Всего коммитов: 23
-- Agent commits: 14
+- Всего коммитов: 24
+- Agent commits: 15
 - User commits: 9
 
 Agent commits считаются по префиксу `agent:` в commit message.
+
+## Development Workflow
+
+Проект развивается в гибридном формате:
+
+- архитектурные и продуктовые решения принимает автор проекта
+- часть реализации выполняется с помощью AI coding tools
+
+Текущий commit split:
+
+- AI-assisted commits: 15
+- Manual commits: 9
 
 ## Что сделано
 
