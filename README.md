@@ -76,6 +76,14 @@ python -m src.embed
 - [ ] Retrieval
 - [ ] RAG Q&A
 
+## Commit Stats
+
+- Всего коммитов: 23
+- Agent commits: 14
+- User commits: 9
+
+Agent commits считаются по префиксу `agent:` в commit message.
+
 ## Что сделано
 
 - [x] OCR MVP
