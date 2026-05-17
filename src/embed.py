@@ -1,15 +1,14 @@
 import json
-
-import chromadb
-from chromadb.api.types import Metadata
-from sentence_transformers import SentenceTransformer
+from json import JSONDecodeError
 from pathlib import Path
-
-from src.schemas import Chunk
-
 from typing import cast
 
+import chromadb
 from chromadb.api.types import Embeddings
+from chromadb.api.types import Metadata
+from sentence_transformers import SentenceTransformer
+
+from src.schemas import Chunk
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,20 +20,53 @@ MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 COLLECTION_NAME = "documents"
 
 
+def validate_chunk(data: object, line_number: int) -> Chunk:
+    if not isinstance(data, dict):
+        raise ValueError(f"Line {line_number}: chunk must be object")
+
+    text = data.get("text")
+    metadata = data.get("metadata")
+
+    if not isinstance(text, str):
+        raise ValueError(f"Line {line_number}: text must be string")
+
+    if not isinstance(metadata, dict):
+        raise ValueError(f"Line {line_number}: metadata must be object")
+
+    source = metadata.get("source")
+    chunk_index = metadata.get("chunk_index")
+
+    if not isinstance(source, str):
+        raise ValueError(f"Line {line_number}: metadata.source must be string")
+
+    if not isinstance(chunk_index, int):
+        raise ValueError(f"Line {line_number}: metadata.chunk_index must be int")
+
+    return {
+        "text": text,
+        "metadata": {
+            "source": source,
+            "chunk_index": chunk_index,
+        },
+    }
+
+
 def load_chunks() -> list[Chunk]:
     chunks: list[Chunk] = []
 
     if not CHUNKS_FILE_PATH.exists():
-        print("chunks.jsonl not found")
+        print("chunks.jsonl не найден")
         return chunks
 
-    with CHUNKS_FILE_PATH.open(
-        "r",
-        encoding="utf-8",
-    ) as file:
-        for line in file:
+    with CHUNKS_FILE_PATH.open("r", encoding="utf-8") as file:
+        for line_number, line in enumerate(file, start=1):
             if line.strip():
-                chunks.append(json.loads(line))
+                try:
+                    data = json.loads(line)
+                except JSONDecodeError as error:
+                    raise ValueError(f"Line {line_number}: invalid JSON") from error
+
+                chunks.append(validate_chunk(data, line_number))
 
     return chunks
 
@@ -60,7 +92,9 @@ def main() -> None:
         }
         for chunk in chunks
     ]
-    ids: list[str] = [f'{chunk["metadata"]["source"]}_{chunk["metadata"]["chunk_index"]}' for chunk in chunks]
+    ids: list[str] = [
+        f'{chunk["metadata"]["source"]}_{chunk["metadata"]["chunk_index"]}' for chunk in chunks
+    ]
 
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     collection = client.get_or_create_collection(name=COLLECTION_NAME)
