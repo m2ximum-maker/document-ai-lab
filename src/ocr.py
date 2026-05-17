@@ -49,33 +49,38 @@ def clean_text(lines: list[str]) -> str:
     return "\n".join(result)
 
 
-image_paths = find_images()
-print(f"Найдено изображений: {len(image_paths)}")
+def main() -> None:
+    image_paths = find_images()
+    print(f"Найдено изображений: {len(image_paths)}")
 
-print("Запускаю EasyOCR...")
-with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-    reader = easyocr.Reader(["ru", "en"], gpu=False)
-
-for image_path in image_paths:
-    raw_path = RAW_OUTPUT_DIR / f"{image_path.stem}.txt"
-    cleaned_path = CLEANED_OUTPUT_DIR / f"{image_path.stem}.txt"
-
-    if raw_path.exists() or cleaned_path.exists():
-        print(f"Перезаписываю результат: {image_path.name}")
-
-    print(f"Обрабатываю: {image_path}")
-    image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
-
+    print("Запускаю EasyOCR...")
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        lines = [str(line) for line in reader.readtext(np.array(image), detail=0)]
+        reader = easyocr.Reader(["ru", "en"], gpu=False)
 
-    raw_text = "\n".join(lines)
-    cleaned_text = clean_text(lines)
+    for image_path in image_paths:
+        raw_path = RAW_OUTPUT_DIR / f"{image_path.stem}.txt"
+        cleaned_path = CLEANED_OUTPUT_DIR / f"{image_path.stem}.txt"
 
-    raw_path.write_text(f"Источник: {image_path.name}\n\n{raw_text}\n", encoding="utf-8")
-    cleaned_path.write_text(f"{cleaned_text}\n", encoding="utf-8")
+        if raw_path.exists() or cleaned_path.exists():
+            print(f"Перезаписываю результат: {image_path.name}")
 
-    print(f"Сохранено raw: {raw_path}")
-    print(f"Сохранено cleaned: {cleaned_path}")
+        print(f"Обрабатываю: {image_path}")
+        image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
 
-print("\nГотово")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            lines = [str(line) for line in reader.readtext(np.array(image), detail=0)]
+
+        raw_text = "\n".join(lines)
+        cleaned_text = clean_text(lines)
+
+        raw_path.write_text(f"Источник: {image_path.name}\n\n{raw_text}\n", encoding="utf-8")
+        cleaned_path.write_text(f"{cleaned_text}\n", encoding="utf-8")
+
+        print(f"Сохранено raw: {raw_path}")
+        print(f"Сохранено cleaned: {cleaned_path}")
+
+    print("\nГотово")
+
+
+if __name__ == "__main__":
+    main()

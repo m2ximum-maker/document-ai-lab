@@ -46,6 +46,7 @@ env/
 
 # Vector DB
 /output/chroma/*
+!output/chroma/.gitkeep
 
 !input/.gitkeep
 !output/.gitkeep

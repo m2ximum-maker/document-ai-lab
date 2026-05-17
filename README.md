@@ -13,6 +13,7 @@
    - `output/cleaned/` — немного очищенный текст
 6. `src/chunk.py` режет `output/cleaned/*.txt` на чанки.
 7. Чанки сохраняются в `output/chunks/chunks.jsonl`.
+8. `src/embed.py` строит embeddings и сохраняет их в Chroma.
 
 OCR-результаты перезаписываются при каждом запуске `src/ocr.py`.
 
@@ -24,10 +25,15 @@ OCR-результаты перезаписываются при каждом з
 ├── output/
 │   ├── raw/               # сырой текст EasyOCR
 │   ├── cleaned/           # очищенный OCR-текст
-│   └── chunks/            # чанки для будущего поиска/RAG
+│   ├── chunks/            # chunks.jsonl для будущего поиска/RAG
+│   └── chroma/            # локальная Chroma vector DB
 ├── src/
+│   ├── __init__.py        # делает src Python-пакетом
 │   ├── ocr.py             # OCR pipeline: image → raw/cleaned txt
-│   └── chunk.py           # chunking pipeline: cleaned txt → chunks.jsonl
+│   ├── chunk.py           # chunking pipeline: cleaned txt → chunks.jsonl
+│   ├── embed.py           # embedding pipeline: chunks.jsonl → Chroma
+│   └── schemas.py         # общие типы данных
+├── pyproject.toml         # настройки форматирования
 ├── requirements.txt       # зависимости проекта
 ├── README.md              # описание проекта
 └── .gitignore             # игнор локальных данных и окружения
@@ -51,7 +57,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 python -m src.ocr
 python -m src.chunk
+python -m src.embed
 ```
+
+Первый запуск `src.embed` требует интернет: модель `sentence-transformers/all-MiniLM-L6-v2` скачивается с Hugging Face и затем используется из локального кэша.
 
 ## Что сделано
 
@@ -64,6 +73,10 @@ python -m src.chunk
 - cleaned txt → chunks.jsonl
 - source file metadata
 - chunk index metadata
+- [x] Embeddings MVP
+- chunks.jsonl → Chroma
+- stale chunks cleanup
+- upsert by stable chunk id
 
 
 ## Что Дальше
@@ -72,10 +85,6 @@ python -m src.chunk
 
 - [ ] Add more sample documents
 - build small local document archive
-
-- [ ] Embeddings
-- generate embeddings for chunks
-- build local vector index
 
 - [ ] Retrieval
 - semantic search over document chunks
