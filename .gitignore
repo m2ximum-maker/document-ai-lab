@@ -44,6 +44,9 @@ env/
 /output/chunks/*
 !output/chunks/.gitkeep
 
+# Vector DB
+/output/chroma/*
+
 !input/.gitkeep
 !output/.gitkeep
 !output/raw/.gitkeep

@@ -5,12 +5,12 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 INPUT_DIR = ROOT_DIR / "output" / "cleaned"
-OUTPUT_DIR = ROOT_DIR / "output" / "chunks"
-CHUNKS_OUTPUT_FILE = OUTPUT_DIR / "chunks.jsonl"
+OUTPUT_CHUNKS_DIR = ROOT_DIR / "output" / "chunks"
+CHUNKS_OUTPUT_FILE = OUTPUT_CHUNKS_DIR / "chunks.jsonl"
 
 
 def main() -> None: 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
 
     text_files = sorted(INPUT_DIR.glob('*.txt'))
     print(f"Найдено файлов для чанкинга: {len(text_files)}")
