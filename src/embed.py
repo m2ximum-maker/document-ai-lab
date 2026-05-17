@@ -72,6 +72,7 @@ def load_chunks() -> list[Chunk]:
 
 
 def main() -> None:
+    print("Загружаю chunks...")
     CHROMA_PATH.mkdir(
         parents=True,
         exist_ok=True,
@@ -79,9 +80,10 @@ def main() -> None:
     chunks = load_chunks()
 
     if not chunks:
-        print("No chunks found")
+        print("chunks не найдено")
         return
 
+    print(f"Найдено chunks: {len(chunks)}")
     model = SentenceTransformer(MODEL_NAME)
 
     texts: list[str] = [chunk["text"] for chunk in chunks]
@@ -98,6 +100,7 @@ def main() -> None:
 
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     collection = client.get_or_create_collection(name=COLLECTION_NAME)
+    print(f"Синхронизирую Chroma collection: {COLLECTION_NAME}")
 
     current_ids = set(ids)
 
@@ -107,13 +110,16 @@ def main() -> None:
     stale_ids = list(existing_ids - current_ids)
 
     if stale_ids:
+        print(f"Удаляю устаревшие chunks из Chroma: {len(stale_ids)}")
         collection.delete(ids=stale_ids)
 
+    print("Создаю embeddings...")
     embeddings = cast(
         Embeddings,
         model.encode(texts).tolist(),
     )
 
+    print("Сохраняю embeddings в Chroma...")
     collection.upsert(
         ids=ids,
         documents=texts,
@@ -121,7 +127,7 @@ def main() -> None:
         embeddings=embeddings,
     )
 
-    print(f"Saved {len(chunks)} chunks to Chroma")
+    print(f"Сохранено {len(chunks)} chunks в Chroma")
 
 
 if __name__ == "__main__":

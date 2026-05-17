@@ -1,6 +1,8 @@
 easyocr==1.7.2
+numpy==1.26.4
 Pillow==11.3.0
 black==25.11.0
 langchain-text-splitters
 chromadb
 sentence-transformers
+transformers<5
