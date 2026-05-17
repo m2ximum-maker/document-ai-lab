@@ -62,6 +62,20 @@ python -m src.embed
 
 Первый запуск `src.embed` требует интернет: модель `sentence-transformers/all-MiniLM-L6-v2` скачивается с Hugging Face и затем используется из локального кэша.
 
+## Прогресс
+
+**Готовность MVP: 60%**
+
+```text
+██████░░░░ 60%
+```
+
+- [x] OCR
+- [x] Chunking
+- [x] Embeddings
+- [ ] Retrieval
+- [ ] RAG Q&A
+
 ## Что сделано
 
 - [x] OCR MVP
