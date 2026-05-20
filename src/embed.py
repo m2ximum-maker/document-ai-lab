@@ -15,7 +15,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 CHUNKS_FILE_PATH = ROOT_DIR / "output" / "chunks" / "chunks.jsonl"
 CHROMA_PATH = ROOT_DIR / "output" / "chroma"
 
-MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 COLLECTION_NAME = "documents"
 
@@ -99,7 +99,10 @@ def main() -> None:
     ]
 
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    collection = client.get_or_create_collection(name=COLLECTION_NAME)
+    collection = client.get_or_create_collection(
+        name=COLLECTION_NAME,
+        metadata={"hnsw:space": "cosine"},
+    )
     print(f"Синхронизирую Chroma collection: {COLLECTION_NAME}")
 
     current_ids = set(ids)
@@ -116,7 +119,7 @@ def main() -> None:
     print("Создаю embeddings...")
     embeddings = cast(
         Embeddings,
-        model.encode(texts).tolist(),
+        model.encode(texts, normalize_embeddings=True).tolist(),
     )
 
     print("Сохраняю embeddings в Chroma...")

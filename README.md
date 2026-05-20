@@ -123,6 +123,11 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - [ ] Retrieval
 - semantic search over document chunks
 - top-k similarity search
+- improve retrieval quality before relying on top-1
+- add hybrid search: keyword/BM25 + vector search
+- rerank top-k results by exact query term matches
+- pull neighboring chunks from the same source when one chunk matches
+- keep in mind: OCR noise and short name-based queries can make pure embeddings miss obvious chunks
 
 - [ ] RAG Q&A
 - question → retrieval → LLM answer
