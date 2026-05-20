@@ -83,6 +83,19 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m src.search "ваш вопро�
 
 Это повышает шанс, что LLM получит не только найденный chunk, но и соседний контекст из того же документа. Ограничение текущего подхода: это всё ещё не полноценный hybrid/BM25 search, поэтому OCR-шум и короткие запросы могут давать лишние chunks.
 
+## Known Rough Edges
+
+Что нужно будет улучшить после MVP:
+
+- pure vector search может поставить OCR-мусор выше очевидного keyword match
+- top-1 выдаче пока нельзя полностью доверять
+- neighbor expansion повышает recall, но может подтягивать соседей от нерелевантных hits
+- simple keyword boost помогает CLI-выдаче, но это не полноценный reranker
+- короткие запросы по именам и кличкам лучше обрабатывать hybrid search
+- OCR-шум влияет и на embeddings, и на keyword matching
+- итоговый context пока может содержать лишние источники; позже нужен лимит/threshold
+- для offline-режима надёжнее использовать `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`, а не `local_files_only=True` в коде
+
 ## Прогресс
 
 **Готовность MVP: 70%**
