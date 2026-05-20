@@ -31,6 +31,13 @@ def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
     return source, chunk_index
 
 
+def keyword_score(query: str, document: str) -> int:
+    query_words = set(query.lower().split())
+    document_lower = document.lower()
+
+    return sum(1 for word in query_words if word in document_lower)
+
+
 def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     collection = client.get_collection(name=COLLECTION_NAME)
@@ -91,20 +98,23 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
             if neighbor_index >= 0:
                 wanted_by_source[source].add(neighbor_index)
 
-    context: list[tuple[str, int, str, float | None]] = []
+    chunks_by_source: dict[str, list[tuple[int, str, float | None]]] = {}
 
     for source in source_order:
         source_results = collection.get(
             where={"source": source},
             include=["documents", "metadatas"],
         )
+        documents = source_results["documents"]
+        metadatas = source_results["metadatas"]
+
+        if documents is None or metadatas is None:
+            continue
+
         wanted_indexes = wanted_by_source[source]
         chunks: list[tuple[int, str, float | None]] = []
 
-        for document, metadata in zip(
-            source_results["documents"],
-            source_results["metadatas"],
-        ):
+        for document, metadata in zip(documents, metadatas):
             key = metadata_key(metadata)
 
             if key is None:
@@ -121,8 +131,26 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
                     )
                 )
 
-        for chunk_index, document, distance in sorted(chunks):
-            context.append((source, chunk_index, document, distance))
+        chunks_by_source[source] = sorted(chunks)
+
+    source_order = [source for source in source_order if chunks_by_source[source]]
+
+    source_order.sort(
+        key=lambda source: (
+            -max(keyword_score(query, document) for _, document, _ in chunks_by_source[source]),
+            min(
+                distance
+                for _, _, distance in chunks_by_source[source]
+                if distance is not None
+            ),
+        )
+    )
+
+    context: list[tuple[str, int, str, float | None]] = [
+        (source, chunk_index, document, distance)
+        for source in source_order
+        for chunk_index, document, distance in chunks_by_source[source]
+    ]
 
     if not context:
         print("Ничего не найдено или база пуста")
