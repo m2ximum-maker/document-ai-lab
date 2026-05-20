@@ -14,6 +14,7 @@
 6. `src/chunk.py` режет `output/cleaned/*.txt` на чанки.
 7. Чанки сохраняются в `output/chunks/chunks.jsonl`.
 8. `src/embed.py` строит embeddings и сохраняет их в Chroma.
+9. `src/search.py` ищет релевантные чанки и собирает context для будущего RAG.
 
 OCR-результаты перезаписываются при каждом запуске `src/ocr.py`.
 
@@ -32,6 +33,7 @@ OCR-результаты перезаписываются при каждом з
 │   ├── ocr.py             # OCR pipeline: image → raw/cleaned txt
 │   ├── chunk.py           # chunking pipeline: cleaned txt → chunks.jsonl
 │   ├── embed.py           # embedding pipeline: chunks.jsonl → Chroma
+│   ├── search.py          # retrieval MVP: query → context chunks
 │   └── schemas.py         # общие типы данных
 ├── pyproject.toml         # настройки форматирования
 ├── requirements.txt       # зависимости проекта
@@ -58,29 +60,48 @@ pip install -r requirements.txt
 python -m src.ocr
 python -m src.chunk
 python -m src.embed
+python -m src.search "ваш вопрос"
 ```
 
-Первый запуск `src.embed` требует интернет: модель `sentence-transformers/all-MiniLM-L6-v2` скачивается с Hugging Face и затем используется из локального кэша.
+Первый запуск `src.embed` требует интернет: модель `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` скачивается с Hugging Face и затем используется из локального кэша.
+
+Для полностью offline-запуска после загрузки модели можно использовать:
+
+```bash
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m src.search "ваш вопрос"
+```
+
+## Retrieval MVP
+
+`src/search.py` сейчас делает MVP-поиск по локальной Chroma collection:
+
+- vector search по embeddings, `top_k=10`
+- расширение соседними chunks для top results
+- дедупликация chunks
+- сортировка источников с простым keyword boost по словам запроса
+- сохранение порядка chunks внутри одного source по `chunk_index`
+
+Это повышает шанс, что LLM получит не только найденный chunk, но и соседний контекст из того же документа. Ограничение текущего подхода: это всё ещё не полноценный hybrid/BM25 search, поэтому OCR-шум и короткие запросы могут давать лишние chunks.
 
 ## Прогресс
 
-**Готовность MVP: 60%**
+**Готовность MVP: 70%**
 
 ```text
-██████░░░░ 60%
+███████░░░ 70%
 ```
 
 - [x] OCR
 - [x] Chunking
 - [x] Embeddings
-- [ ] Retrieval
+- [x] Retrieval MVP
 - [ ] RAG Q&A
 
 ## Commit Stats
 
-- Всего коммитов: 24
-- Agent commits: 15
-- User commits: 9
+- Всего коммитов: 27
+- Agent commits: 17
+- User commits: 10
 
 Agent commits считаются по префиксу `agent:` в commit message.
 
@@ -93,8 +114,8 @@ Agent commits считаются по префиксу `agent:` в commit messag
 
 Текущий commit split:
 
-- AI-assisted commits: 15
-- Manual commits: 9
+- AI-assisted commits: 17
+- Manual commits: 10
 
 ## Что сделано
 
@@ -111,6 +132,10 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - chunks.jsonl → Chroma
 - stale chunks cleanup
 - upsert by stable chunk id
+- [x] Retrieval MVP
+- semantic search over document chunks
+- neighbor chunk expansion
+- simple keyword boost for source ordering
 
 
 ## Что Дальше
@@ -120,13 +145,11 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - [ ] Add more sample documents
 - build small local document archive
 
-- [ ] Retrieval
-- semantic search over document chunks
-- top-k similarity search
+- [ ] Retrieval quality
 - improve retrieval quality before relying on top-1
 - add hybrid search: keyword/BM25 + vector search
 - rerank top-k results by exact query term matches
-- pull neighboring chunks from the same source when one chunk matches
+- tune chunk expansion and context limits
 - keep in mind: OCR noise and short name-based queries can make pure embeddings miss obvious chunks
 
 - [ ] RAG Q&A
