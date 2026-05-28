@@ -1,10 +1,9 @@
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import chromadb
 from sentence_transformers import SentenceTransformer
-
-from typing import cast
 
 from chromadb.api.types import Embedding
 from chromadb.api.types import Metadata
@@ -20,6 +19,24 @@ COLLECTION_NAME = "documents"
 SEARCH_TOP_K = 10
 EXPAND_TOP_N = 5
 NEIGHBOR_WINDOW = 1
+
+Hit = tuple[
+    str,  # source
+    int,  # chunk_index
+    str,  # document
+    float,  # distance
+]
+Chunk = tuple[
+    int,  # chunk_index
+    str,  # text
+    float | None,  # distance
+]
+ContextItem = tuple[
+    str,  # source
+    int,  # chunk_index
+    str,  # document
+    float | None,  # distance
+]
 
 
 def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
@@ -43,30 +60,34 @@ def keyword_score(query: str, document: str) -> int:
     return sum(1 for word in query_words if word in document_lower)
 
 
-def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
-    # Подключаемся к локальной Chroma-базе и загружаем embedding-модель для запроса.
+def get_collection() -> Any:
+    # Подключаемся к локальной Chroma-базе с уже сохранёнными chunks.
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    collection = client.get_collection(name=COLLECTION_NAME)
-    model = SentenceTransformer(MODEL_NAME)
+    return client.get_collection(name=COLLECTION_NAME)
 
+
+def embed_query(query: str, model: SentenceTransformer) -> Embedding:
     # Превращаем пользовательский вопрос в embedding того же формата,
     # что и embeddings сохранённых чанков.
-    query_embedding = cast(
+    return cast(
         Embedding,
         model.encode(query, normalize_embeddings=True).tolist(),
     )
 
+
+def query_nearest_chunks(collection: Any, query_embedding: Embedding, top_chunks: int) -> Any:
     # Ищем ближайшие чанки по vector similarity.
-    results = collection.query(
+    return collection.query(
         query_embeddings=[query_embedding],
         n_results=top_chunks,
     )
 
+
+def normalize_hits(results: Any) -> list[Hit]:
     # Chroma возвращает списки списков: внешний уровень нужен для batch-запросов.
     # Здесь запрос один, поэтому дальше работаем с нулевым элементом.
     if not results["documents"] or not results["metadatas"] or not results["distances"]:
-        print("Ничего не найдено или база пуста")
-        return
+        return []
 
     found_documents = results["documents"][0]
     found_metadatas = results["metadatas"][0]
@@ -74,14 +95,7 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
 
     # Нормализуем сырые результаты Chroma в удобный список hits.
     # Заодно отбрасываем элементы с битой или неполной metadata.
-    hits: list[
-        tuple[
-            str,  # source
-            int,  # chunk_index
-            str,  # document
-            float,  # distance
-        ]
-    ] = []
+    hits: list[Hit] = []
 
     for document, metadata, distance in zip(
         found_documents,
@@ -96,10 +110,12 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
         source, chunk_index = key
         hits.append((source, chunk_index, document, distance))
 
-    if not hits:
-        print("Ничего не найдено или база пуста")
-        return
+    return hits
 
+
+def plan_neighbor_expansion(
+    hits: list[Hit],
+) -> tuple[dict[tuple[str, int], float], dict[str, set[int]], list[str]]:
     # distance хранится только для чанков, которые реально нашёл vector search.
     # У соседних чанков distance будет None, потому что они добавляются как контекст.
     distance_by_key: dict[tuple[str, int], float] = {}
@@ -123,13 +139,20 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
             if neighbor_index >= 0:
                 wanted_by_source[source].add(neighbor_index)
 
-    chunks_by_source: dict[
-        str, list[tuple[int, str, float | None]]  # source  # chunk_index  # text  # distance
-    ] = {}
+    return distance_by_key, wanted_by_source, source_order
 
+
+def load_expanded_chunks(
+    collection: Any,
+    distance_by_key: dict[tuple[str, int], float],
+    wanted_by_source: dict[str, set[int]],
+    source_order: list[str],
+) -> dict[str, list[Chunk]]:
     # Загружаем chunks для найденных документов
     # и оставляем только нужные chunk indexes:
     # найденные retrieval'ом + соседние chunks.
+    chunks_by_source: dict[str, list[Chunk]] = {}
+
     for source in source_order:
         source_results = collection.get(
             where={"source": source},
@@ -142,7 +165,7 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
             continue
 
         wanted_indexes = wanted_by_source[source]
-        chunks: list[tuple[int, str, float | None]] = []  # chunk_index  # text  # distance
+        chunks: list[Chunk] = []
 
         for document, metadata in zip(documents, metadatas):
             key = metadata_key(metadata)
@@ -163,28 +186,41 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
 
         chunks_by_source[source] = sorted(chunks)
 
-    source_order = [source for source in source_order if chunks_by_source[source]]
+    return chunks_by_source
 
+
+def sort_sources_by_hybrid_score(
+    query: str,
+    chunks_by_source: dict[str, list[Chunk]],
+    source_order: list[str],
+) -> list[str]:
     # Пересортировываем документы по простой hybrid-логике:
     # сначала по keyword совпадениям, затем по vector distance.
-    source_order.sort(
+    sorted_sources = [source for source in source_order if chunks_by_source.get(source)]
+
+    sorted_sources.sort(
         key=lambda source: (
             -max(keyword_score(query, document) for _, document, _ in chunks_by_source[source]),
             min(distance for _, _, distance in chunks_by_source[source] if distance is not None),
         )
     )
 
+    return sorted_sources
+
+
+def build_context(
+    source_order: list[str],
+    chunks_by_source: dict[str, list[Chunk]],
+) -> list[ContextItem]:
     # Разворачиваем сгруппированные по source чанки обратно в один итоговый context.
-    context: list[tuple[str, int, str, float | None]] = [
+    return [
         (source, chunk_index, document, distance)
         for source in source_order
         for chunk_index, document, distance in chunks_by_source[source]
     ]
 
-    if not context:
-        print("Ничего не найдено или база пуста")
-        return
 
+def print_context(hits: list[Hit], context: list[ContextItem]) -> None:
     print(f"Найдено через vector search: {len(hits)}")
     print(f"Расширено соседями top hits: {min(len(hits), EXPAND_TOP_N)}")
     print(f"Итоговый context chunks: {len(context)}")
@@ -200,6 +236,37 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
         print(f"source={source}")
         print(f"chunk_index={chunk_index}")
         print(document)
+
+
+def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
+    collection = get_collection()
+
+    # Загружаем embedding-модель только для пользовательского запроса.
+    model = SentenceTransformer(MODEL_NAME)
+
+    query_embedding = embed_query(query, model)
+    results = query_nearest_chunks(collection, query_embedding, top_chunks)
+    hits = normalize_hits(results)
+
+    if not hits:
+        print("Ничего не найдено или база пуста")
+        return
+
+    distance_by_key, wanted_by_source, source_order = plan_neighbor_expansion(hits)
+    chunks_by_source = load_expanded_chunks(
+        collection,
+        distance_by_key,
+        wanted_by_source,
+        source_order,
+    )
+    sorted_sources = sort_sources_by_hybrid_score(query, chunks_by_source, source_order)
+    context = build_context(sorted_sources, chunks_by_source)
+
+    if not context:
+        print("Ничего не найдено или база пуста")
+        return
+
+    print_context(hits, context)
 
 
 def main() -> None:
