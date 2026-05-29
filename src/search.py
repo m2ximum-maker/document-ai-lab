@@ -275,7 +275,7 @@ def print_context(hits: list[Hit], context: list[ContextChunk]) -> None:
         print(f"\n[{i}] distance={distance_text}")
         print(f"source={chunk.source}")
         print(f"chunk_index={chunk.chunk_index}")
-        print(chunk.document[:300])
+        print(chunk.document)
 
 
 def retrieve_context(query: str, top_chunks: int = SEARCH_TOP_K) -> SearchResult:

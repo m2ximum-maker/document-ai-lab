@@ -1,0 +1,10 @@
+[
+  {
+    "query": "Когда был визит к врачу?",
+    "expected_source": "sample_document_1.txt"
+  },
+  {
+    "query": "Какие рекомендации указаны в документе?",
+    "expected_source": "sample_document_2.txt"
+  }
+]

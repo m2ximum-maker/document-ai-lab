@@ -28,11 +28,14 @@ OCR-результаты перезаписываются при каждом з
 │   ├── cleaned/           # очищенный OCR-текст
 │   ├── chunks/            # chunks.jsonl для будущего поиска/RAG
 │   └── chroma/            # локальная Chroma vector DB
+├── eval/
+│   └── eval_queries.example.json # пример retrieval eval cases
 ├── src/
 │   ├── __init__.py        # делает src Python-пакетом
 │   ├── ocr.py             # OCR pipeline: image → raw/cleaned txt
 │   ├── chunk.py           # chunking pipeline: cleaned txt → chunks.jsonl
 │   ├── embed.py           # embedding pipeline: chunks.jsonl → Chroma
+│   ├── eval.py            # простой retrieval smoke test
 │   ├── search.py          # retrieval MVP: query → context chunks
 │   └── schemas.py         # общие типы данных
 ├── pyproject.toml         # настройки форматирования
@@ -83,6 +86,29 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m src.search "ваш вопро�
 - CLI печатает metadata и preview текста чанка до 300 символов
 
 Это повышает шанс, что LLM получит не только найденный chunk, но и соседний контекст из того же документа. Ограничение текущего подхода: это всё ещё не полноценный hybrid/BM25 search, поэтому OCR-шум и короткие запросы могут давать лишние chunks.
+
+## Retrieval Eval
+
+`src/eval.py` — простой smoke test для retrieval. Он читает eval cases, запускает `retrieve_context(query)` и проверяет только одно: попал ли `expected_source` в найденный context. Качество ответа LLM, точность chunk index и наличие конкретных фраз внутри текста пока не оцениваются.
+
+Формат локального `eval/eval_queries.json`:
+
+```json
+[
+  {
+    "query": "Когда была эндоскопия желудка?",
+    "expected_source": "IMG_5371 2.txt"
+  }
+]
+```
+
+Запуск:
+
+```bash
+python -m src.eval eval/eval_queries.json
+```
+
+`eval/eval_queries.json` игнорируется git, потому что может содержать личные данные. Для коммита есть обезличенный пример: `eval/eval_queries.example.json`.
 
 ## Known Rough Edges
 

@@ -48,6 +48,10 @@ env/
 /output/chroma/*
 !output/chroma/.gitkeep
 
+# Eval
+eval/eval_queries.json
+eval/*local*.json
+
 !input/.gitkeep
 !output/.gitkeep
 !output/raw/.gitkeep
