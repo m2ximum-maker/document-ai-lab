@@ -89,7 +89,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m src.search "ваш вопро�
 
 ## Retrieval Eval
 
-`src/eval.py` — простой smoke test для retrieval. Он читает eval cases, запускает `retrieve_context(query)` и проверяет только одно: попал ли `expected_source` в найденный context. Качество ответа LLM, точность chunk index и наличие конкретных фраз внутри текста пока не оцениваются.
+`src/eval.py` — простой smoke/quality test для retrieval. Он читает eval cases, запускает `retrieve_context(query)` и проверяет только одно: попал ли `expected_source` в найденный context. Качество ответа LLM, точность chunk index и наличие конкретных фраз внутри текста пока не оцениваются.
 
 Формат локального `eval/eval_queries.json`:
 
@@ -110,6 +110,8 @@ python -m src.eval eval/eval_queries.json
 
 `eval/eval_queries.json` игнорируется git, потому что может содержать личные данные. Для коммита есть обезличенный пример: `eval/eval_queries.example.json`.
 
+Для MVP нормальна ситуация, когда часть quality cases падает: это показывает слабые места retrieval на OCR-шуме, коротких запросах и синонимах. Такой eval нужен как baseline, чтобы видеть, стали ли изменения лучше или хуже.
+
 ## Known Rough Edges
 
 Что нужно будет улучшить после MVP:
@@ -118,30 +120,32 @@ python -m src.eval eval/eval_queries.json
 - top-1 выдаче пока нельзя полностью доверять
 - neighbor expansion повышает recall, но может подтягивать соседей от нерелевантных hits
 - simple keyword boost помогает CLI-выдаче, но это не полноценный reranker
-- короткие запросы по именам и кличкам лучше обрабатывать hybrid search
+- короткие однословные запросы и запросы по именам/кличкам лучше обрабатывать hybrid search
+- синонимы и аббревиатуры могут промахиваться из-за OCR-шума
 - OCR-шум влияет и на embeddings, и на keyword matching
 - итоговый context пока может содержать лишние источники; позже нужен лимит/threshold
 - для offline-режима надёжнее использовать `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`, а не `local_files_only=True` в коде
 
 ## Прогресс
 
-**Готовность MVP: 70%**
+**Готовность MVP: 75%**
 
 ```text
-███████░░░ 70%
+███████▓░░ 75%
 ```
 
 - [x] OCR
 - [x] Chunking
 - [x] Embeddings
 - [x] Retrieval MVP
+- [x] Retrieval Eval
 - [ ] RAG Q&A
 
 ## Commit Stats
 
-- Всего коммитов: 34
-- Agent commits: 23
-- User commits: 11
+- Всего коммитов: 39
+- Agent commits: 27
+- User commits: 12
 
 Agent commits считаются по префиксу `agent:` в commit message.
 
@@ -154,8 +158,8 @@ Agent commits считаются по префиксу `agent:` в commit messag
 
 Текущий commit split:
 
-- AI-assisted commits: 23
-- Manual commits: 11
+- AI-assisted commits: 27
+- Manual commits: 12
 
 ## Что сделано
 
@@ -176,6 +180,10 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - semantic search over document chunks
 - neighbor chunk expansion
 - simple keyword boost for source ordering
+- reusable `retrieve_context()` for CLI/eval
+- [x] Retrieval Eval MVP
+- local eval cases: query → expected source
+- PASS/FAIL summary for retrieval regression checks
 
 
 ## Что Дальше
