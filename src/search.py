@@ -148,17 +148,27 @@ def normalize_hits(results: QueryResult) -> list[Hit]:
     return hits
 
 
-def plan_neighbor_expansion(hits: list[Hit]) -> NeighborExpansionPlan:
+def plan_neighbor_expansion(query: str, hits: list[Hit]) -> NeighborExpansionPlan:
     # distance хранится только для чанков, которые реально нашёл vector search.
     # У соседних чанков distance будет None, потому что они добавляются как контекст.
     distance_by_key: dict[ChunkKey, float] = {}
     wanted_by_source: dict[str, set[int]] = {}
     source_order: list[str] = []
 
+    # Перед expansion поднимаем exact keyword matches внутри vector top-k.
+    # Иначе релевантный chunk с точными словами запроса может не попасть в top EXPAND_TOP_N.
+    expansion_hits = sorted(
+        hits,
+        key=lambda hit: (
+            -keyword_score(query, hit.document),
+            hit.distance,
+        ),
+    )[:EXPAND_TOP_N]
+
     # Для лучших найденных чанков собираем сам chunk и соседние,
     # чтобы восстановить контекст, разрезанный chunking'ом.
     # Группируем нужные chunk indexes по source-документу.
-    for hit in hits[:EXPAND_TOP_N]:
+    for hit in expansion_hits:
         distance_by_key[(hit.source, hit.chunk_index)] = hit.distance
 
         if hit.source not in wanted_by_source:
@@ -293,7 +303,7 @@ def retrieve_context(query: str, top_chunks: int = SEARCH_TOP_K) -> SearchResult
 
     # Какие source/chunk_index нужно дозагрузить (соседние чанки)
     # и какие distance были у чанков, найденных самим vector search.
-    expansion_plan = plan_neighbor_expansion(hits)
+    expansion_plan = plan_neighbor_expansion(query, hits)
 
     # Чанки, сгруппированные по source: найденные chunks + их соседи.
     chunks_by_source = load_expanded_chunks(collection, expansion_plan)
