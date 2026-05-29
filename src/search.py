@@ -23,6 +23,7 @@ SEARCH_TOP_K = 10
 EXPAND_TOP_N = 5
 NEIGHBOR_WINDOW = 1
 
+# tuple[source, chunk_index]
 ChunkKey = tuple[str, int]
 
 
@@ -268,7 +269,7 @@ def print_context(hits: list[Hit], context: list[ContextChunk]) -> None:
         print(f"\n[{i}] distance={distance_text}")
         print(f"source={chunk.source}")
         print(f"chunk_index={chunk.chunk_index}")
-        print(chunk.document)
+        print(chunk.document[:300])
 
 
 def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
@@ -285,13 +286,23 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
         print("Ничего не найдено или база пуста")
         return
 
+    # Какие source/chunk_index нужно дозагрузить (соседние чанки)
+    # и какие distance были у чанков, найденных самим vector search.
     expansion_plan = plan_neighbor_expansion(hits)
+
+    # Чанки, сгруппированные по source: найденные chunks + их соседи.
     chunks_by_source = load_expanded_chunks(collection, expansion_plan)
+
+    # Source-документы, пересортированные по hybrid-оценке:
+    # keyword score, затем vector distance.
     sorted_sources = sort_sources_by_hybrid_score(
         query,
         chunks_by_source,
         expansion_plan.source_order,
     )
+
+    # Финальный плоский список chunks в порядке, в котором их печатаем
+    # или передаём дальше в RAG-контекст.
     context = build_context(sorted_sources, chunks_by_source)
 
     if not context:
