@@ -1,6 +1,6 @@
 # OCR Test
 
-Площадка для проб OCR на документах. Цель проекта — быстро проверять, как EasyOCR распознает фото документов, и сравнивать сырой OCR с упрощенной текстовой версией.
+Площадка для проб OCR и document retrieval. Цель проекта — быстро проверять, как EasyOCR распознает фото документов, превращать результат в chunks/embeddings и искать релевантный контекст для будущего RAG.
 
 ## Pipeline
 
@@ -76,10 +76,11 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m src.search "ваш вопро�
 `src/search.py` сейчас делает MVP-поиск по локальной Chroma collection:
 
 - vector search по embeddings, `top_k=10`
-- расширение соседними chunks для top results
+- расширение соседними chunks для top-5 результатов, `neighbor_window=1`
 - дедупликация chunks
 - сортировка источников с простым keyword boost по словам запроса
 - сохранение порядка chunks внутри одного source по `chunk_index`
+- CLI печатает metadata и preview текста чанка до 300 символов
 
 Это повышает шанс, что LLM получит не только найденный chunk, но и соседний контекст из того же документа. Ограничение текущего подхода: это всё ещё не полноценный hybrid/BM25 search, поэтому OCR-шум и короткие запросы могут давать лишние chunks.
 
@@ -112,9 +113,9 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m src.search "ваш вопро�
 
 ## Commit Stats
 
-- Всего коммитов: 27
-- Agent commits: 17
-- User commits: 10
+- Всего коммитов: 34
+- Agent commits: 23
+- User commits: 11
 
 Agent commits считаются по префиксу `agent:` в commit message.
 
@@ -127,8 +128,8 @@ Agent commits считаются по префиксу `agent:` в commit messag
 
 Текущий commit split:
 
-- AI-assisted commits: 17
-- Manual commits: 10
+- AI-assisted commits: 23
+- Manual commits: 11
 
 ## Что сделано
 
