@@ -1,12 +1,15 @@
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import chromadb
 from sentence_transformers import SentenceTransformer
 
+from chromadb.api.models.Collection import Collection
 from chromadb.api.types import Embedding
 from chromadb.api.types import Metadata
+from chromadb.api.types import QueryResult
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 CHROMA_PATH = ROOT_DIR / "output" / "chroma"
@@ -20,23 +23,37 @@ SEARCH_TOP_K = 10
 EXPAND_TOP_N = 5
 NEIGHBOR_WINDOW = 1
 
-Hit = tuple[
-    str,  # source
-    int,  # chunk_index
-    str,  # document
-    float,  # distance
-]
-Chunk = tuple[
-    int,  # chunk_index
-    str,  # text
-    float | None,  # distance
-]
-ContextItem = tuple[
-    str,  # source
-    int,  # chunk_index
-    str,  # document
-    float | None,  # distance
-]
+ChunkKey = tuple[str, int]
+
+
+@dataclass(frozen=True)
+class Hit:
+    source: str
+    chunk_index: int
+    document: str
+    distance: float
+
+
+@dataclass(frozen=True)
+class ExpandedChunk:
+    chunk_index: int
+    document: str
+    distance: float | None
+
+
+@dataclass(frozen=True)
+class ContextChunk:
+    source: str
+    chunk_index: int
+    document: str
+    distance: float | None
+
+
+@dataclass(frozen=True)
+class NeighborExpansionPlan:
+    distance_by_key: dict[ChunkKey, float]
+    wanted_by_source: dict[str, set[int]]
+    source_order: list[str]
 
 
 def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
@@ -60,7 +77,7 @@ def keyword_score(query: str, document: str) -> int:
     return sum(1 for word in query_words if word in document_lower)
 
 
-def get_collection() -> Any:
+def get_collection() -> Collection:
     # Подключаемся к локальной Chroma-базе с уже сохранёнными chunks.
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     return client.get_collection(name=COLLECTION_NAME)
@@ -75,7 +92,11 @@ def embed_query(query: str, model: SentenceTransformer) -> Embedding:
     )
 
 
-def query_nearest_chunks(collection: Any, query_embedding: Embedding, top_chunks: int) -> Any:
+def query_nearest_chunks(
+    collection: Collection,
+    query_embedding: Embedding,
+    top_chunks: int,
+) -> QueryResult:
     # Ищем ближайшие чанки по vector similarity.
     return collection.query(
         query_embeddings=[query_embedding],
@@ -83,7 +104,7 @@ def query_nearest_chunks(collection: Any, query_embedding: Embedding, top_chunks
     )
 
 
-def normalize_hits(results: Any) -> list[Hit]:
+def normalize_hits(results: QueryResult) -> list[Hit]:
     # Chroma возвращает списки списков: внешний уровень нужен для batch-запросов.
     # Здесь запрос один, поэтому дальше работаем с нулевым элементом.
     if not results["documents"] or not results["metadatas"] or not results["distances"]:
@@ -108,52 +129,59 @@ def normalize_hits(results: Any) -> list[Hit]:
             continue
 
         source, chunk_index = key
-        hits.append((source, chunk_index, document, distance))
+        hits.append(
+            Hit(
+                source=source,
+                chunk_index=chunk_index,
+                document=document,
+                distance=distance,
+            )
+        )
 
     return hits
 
 
-def plan_neighbor_expansion(
-    hits: list[Hit],
-) -> tuple[dict[tuple[str, int], float], dict[str, set[int]], list[str]]:
+def plan_neighbor_expansion(hits: list[Hit]) -> NeighborExpansionPlan:
     # distance хранится только для чанков, которые реально нашёл vector search.
     # У соседних чанков distance будет None, потому что они добавляются как контекст.
-    distance_by_key: dict[tuple[str, int], float] = {}
+    distance_by_key: dict[ChunkKey, float] = {}
     wanted_by_source: dict[str, set[int]] = {}
     source_order: list[str] = []
 
     # Для лучших найденных чанков собираем сам chunk и соседние,
     # чтобы восстановить контекст, разрезанный chunking'ом.
     # Группируем нужные chunk indexes по source-документу.
-    for source, chunk_index, _, distance in hits[:EXPAND_TOP_N]:
-        distance_by_key[(source, chunk_index)] = distance
+    for hit in hits[:EXPAND_TOP_N]:
+        distance_by_key[(hit.source, hit.chunk_index)] = hit.distance
 
-        if source not in wanted_by_source:
-            wanted_by_source[source] = set()
-            source_order.append(source)
+        if hit.source not in wanted_by_source:
+            wanted_by_source[hit.source] = set()
+            source_order.append(hit.source)
 
         for neighbor_index in range(
-            chunk_index - NEIGHBOR_WINDOW,
-            chunk_index + NEIGHBOR_WINDOW + 1,
+            hit.chunk_index - NEIGHBOR_WINDOW,
+            hit.chunk_index + NEIGHBOR_WINDOW + 1,
         ):
             if neighbor_index >= 0:
-                wanted_by_source[source].add(neighbor_index)
+                wanted_by_source[hit.source].add(neighbor_index)
 
-    return distance_by_key, wanted_by_source, source_order
+    return NeighborExpansionPlan(
+        distance_by_key=distance_by_key,
+        wanted_by_source=wanted_by_source,
+        source_order=source_order,
+    )
 
 
 def load_expanded_chunks(
-    collection: Any,
-    distance_by_key: dict[tuple[str, int], float],
-    wanted_by_source: dict[str, set[int]],
-    source_order: list[str],
-) -> dict[str, list[Chunk]]:
+    collection: Collection,
+    expansion_plan: NeighborExpansionPlan,
+) -> dict[str, list[ExpandedChunk]]:
     # Загружаем chunks для найденных документов
     # и оставляем только нужные chunk indexes:
     # найденные retrieval'ом + соседние chunks.
-    chunks_by_source: dict[str, list[Chunk]] = {}
+    chunks_by_source: dict[str, list[ExpandedChunk]] = {}
 
-    for source in source_order:
+    for source in expansion_plan.source_order:
         source_results = collection.get(
             where={"source": source},
             include=["documents", "metadatas"],
@@ -164,8 +192,8 @@ def load_expanded_chunks(
         if documents is None or metadatas is None:
             continue
 
-        wanted_indexes = wanted_by_source[source]
-        chunks: list[Chunk] = []
+        wanted_indexes = expansion_plan.wanted_by_source[source]
+        chunks: list[ExpandedChunk] = []
 
         for document, metadata in zip(documents, metadatas):
             key = metadata_key(metadata)
@@ -177,21 +205,21 @@ def load_expanded_chunks(
 
             if chunk_index in wanted_indexes:
                 chunks.append(
-                    (
-                        chunk_index,
-                        document,
-                        distance_by_key.get((source, chunk_index)),
+                    ExpandedChunk(
+                        chunk_index=chunk_index,
+                        document=document,
+                        distance=expansion_plan.distance_by_key.get((source, chunk_index)),
                     )
                 )
 
-        chunks_by_source[source] = sorted(chunks)
+        chunks_by_source[source] = sorted(chunks, key=lambda chunk: chunk.chunk_index)
 
     return chunks_by_source
 
 
 def sort_sources_by_hybrid_score(
     query: str,
-    chunks_by_source: dict[str, list[Chunk]],
+    chunks_by_source: dict[str, list[ExpandedChunk]],
     source_order: list[str],
 ) -> list[str]:
     # Пересортировываем документы по простой hybrid-логике:
@@ -200,8 +228,8 @@ def sort_sources_by_hybrid_score(
 
     sorted_sources.sort(
         key=lambda source: (
-            -max(keyword_score(query, document) for _, document, _ in chunks_by_source[source]),
-            min(distance for _, _, distance in chunks_by_source[source] if distance is not None),
+            -max(keyword_score(query, chunk.document) for chunk in chunks_by_source[source]),
+            min(chunk.distance for chunk in chunks_by_source[source] if chunk.distance is not None),
         )
     )
 
@@ -210,32 +238,37 @@ def sort_sources_by_hybrid_score(
 
 def build_context(
     source_order: list[str],
-    chunks_by_source: dict[str, list[Chunk]],
-) -> list[ContextItem]:
+    chunks_by_source: dict[str, list[ExpandedChunk]],
+) -> list[ContextChunk]:
     # Разворачиваем сгруппированные по source чанки обратно в один итоговый context.
     return [
-        (source, chunk_index, document, distance)
+        ContextChunk(
+            source=source,
+            chunk_index=chunk.chunk_index,
+            document=chunk.document,
+            distance=chunk.distance,
+        )
         for source in source_order
-        for chunk_index, document, distance in chunks_by_source[source]
+        for chunk in chunks_by_source[source]
     ]
 
 
-def print_context(hits: list[Hit], context: list[ContextItem]) -> None:
+def print_context(hits: list[Hit], context: list[ContextChunk]) -> None:
     print(f"Найдено через vector search: {len(hits)}")
     print(f"Расширено соседями top hits: {min(len(hits), EXPAND_TOP_N)}")
     print(f"Итоговый context chunks: {len(context)}")
 
     # Печатаем итоговый контекст в порядке, который будет удобно скопировать
     # или передать дальше в LLM/RAG-пайплайн.
-    for i, (source, chunk_index, document, distance) in enumerate(
+    for i, chunk in enumerate(
         context,
         start=1,
     ):
-        distance_text = distance if distance is not None else "neighbor"
+        distance_text = chunk.distance if chunk.distance is not None else "neighbor"
         print(f"\n[{i}] distance={distance_text}")
-        print(f"source={source}")
-        print(f"chunk_index={chunk_index}")
-        print(document)
+        print(f"source={chunk.source}")
+        print(f"chunk_index={chunk.chunk_index}")
+        print(chunk.document)
 
 
 def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
@@ -252,14 +285,13 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
         print("Ничего не найдено или база пуста")
         return
 
-    distance_by_key, wanted_by_source, source_order = plan_neighbor_expansion(hits)
-    chunks_by_source = load_expanded_chunks(
-        collection,
-        distance_by_key,
-        wanted_by_source,
-        source_order,
+    expansion_plan = plan_neighbor_expansion(hits)
+    chunks_by_source = load_expanded_chunks(collection, expansion_plan)
+    sorted_sources = sort_sources_by_hybrid_score(
+        query,
+        chunks_by_source,
+        expansion_plan.source_order,
     )
-    sorted_sources = sort_sources_by_hybrid_score(query, chunks_by_source, source_order)
     context = build_context(sorted_sources, chunks_by_source)
 
     if not context:
