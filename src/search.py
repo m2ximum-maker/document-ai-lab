@@ -57,6 +57,12 @@ class NeighborExpansionPlan:
     source_order: list[str]
 
 
+@dataclass(frozen=True)
+class SearchResult:
+    hits: list[Hit]
+    context: list[ContextChunk]
+
+
 def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
     # Достаём из metadata стабильный ключ чанка: исходный файл + номер чанка.
     # Если Chroma вернула metadata неожиданного формата, такой результат пропускаем.
@@ -272,7 +278,7 @@ def print_context(hits: list[Hit], context: list[ContextChunk]) -> None:
         print(chunk.document[:300])
 
 
-def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
+def retrieve_context(query: str, top_chunks: int = SEARCH_TOP_K) -> SearchResult:
     collection = get_collection()
 
     # Загружаем embedding-модель только для пользовательского запроса.
@@ -283,8 +289,7 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
     hits = normalize_hits(results)
 
     if not hits:
-        print("Ничего не найдено или база пуста")
-        return
+        return SearchResult(hits=[], context=[])
 
     # Какие source/chunk_index нужно дозагрузить (соседние чанки)
     # и какие distance были у чанков, найденных самим vector search.
@@ -305,11 +310,17 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
     # или передаём дальше в RAG-контекст.
     context = build_context(sorted_sources, chunks_by_source)
 
-    if not context:
+    return SearchResult(hits=hits, context=context)
+
+
+def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
+    result = retrieve_context(query, top_chunks)
+
+    if not result.context:
         print("Ничего не найдено или база пуста")
         return
 
-    print_context(hits, context)
+    print_context(result.hits, result.context)
 
 
 def main() -> None:
