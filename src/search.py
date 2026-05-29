@@ -1,4 +1,5 @@
 import sys
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -78,8 +79,8 @@ def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
 def keyword_score(query: str, document: str) -> int:
     # Простейшая keyword-оценка: считаем, сколько слов из запроса встречается в тексте.
     # Она нужна только как дополнительный сигнал при сортировке документов.
-    query_words = set(query.lower().split())
-    document_lower = document.lower()
+    query_words = set(re.findall(r"\w+", query.casefold()))
+    document_lower = document.casefold()
 
     return sum(1 for word in query_words if word in document_lower)
 
