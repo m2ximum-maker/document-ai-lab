@@ -1,6 +1,6 @@
 # OCR Test
 
-Площадка для проб OCR и document retrieval. Цель проекта — быстро проверять, как EasyOCR распознает фото документов, превращать результат в chunks/embeddings и искать релевантный контекст для будущего RAG.
+Площадка для проб OCR, document retrieval и RAG Q&A. Цель проекта — быстро проверять, как EasyOCR распознает фото документов, превращать результат в chunks/embeddings, искать релевантный контекст и отвечать на вопросы по найденным фрагментам.
 
 ## Pipeline
 
@@ -14,7 +14,8 @@
 6. `src/chunk.py` режет `output/cleaned/*.txt` на чанки.
 7. Чанки сохраняются в `output/chunks/chunks.jsonl`.
 8. `src/embed.py` строит embeddings и сохраняет их в Chroma.
-9. `src/search.py` ищет релевантные чанки и собирает context для будущего RAG.
+9. `src/search.py` ищет релевантные чанки и собирает context для RAG.
+10. `src/ask.py` собирает prompt из context + question и отправляет его в OpenAI API.
 
 OCR-результаты перезаписываются при каждом запуске `src/ocr.py`.
 
@@ -37,6 +38,7 @@ OCR-результаты перезаписываются при каждом з
 │   ├── embed.py           # embedding pipeline: chunks.jsonl → Chroma
 │   ├── eval.py            # простой retrieval smoke test
 │   ├── search.py          # retrieval MVP: query → context chunks
+│   ├── ask.py             # RAG Q&A MVP: question → retrieval → LLM answer
 │   └── schemas.py         # общие типы данных
 ├── pyproject.toml         # настройки форматирования
 ├── requirements.txt       # зависимости проекта
@@ -63,7 +65,8 @@ pip install -r requirements.txt
 python -m src.ocr
 python -m src.chunk
 python -m src.embed
-python -m src.search "ваш вопрос"
+python -m src.search "ваш вопрос для получения нужного чанка"
+python -m src.ask "ваш вопрос к llm"
 ```
 
 Первый запуск `src.embed` требует интернет: модель `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` скачивается с Hugging Face и затем используется из локального кэша.
@@ -73,6 +76,15 @@ python -m src.search "ваш вопрос"
 ```bash
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m src.search "ваш вопрос"
 ```
+
+Для RAG Q&A нужен OpenAI API key и имя модели в `.env`:
+
+```text
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=your_model_name_here
+```
+
+`.env` игнорируется git и предназначен только для локальных секретов и настроек.
 
 ## Retrieval MVP
 
@@ -96,8 +108,8 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m src.search "ваш вопро�
 ```json
 [
   {
-    "query": "Когда была эндоскопия желудка?",
-    "expected_source": "IMG_5371 2.txt"
+    "query": "Когда была последнее посещение терапевта?",
+    "expected_source": "IMG_1.txt"
   }
 ]
 ```
@@ -112,6 +124,25 @@ python -m src.eval eval/eval_queries.json
 
 Для MVP нормальна ситуация, когда часть quality cases падает: это показывает слабые места retrieval на OCR-шуме, коротких запросах и синонимах. Такой eval нужен как baseline, чтобы видеть, стали ли изменения лучше или хуже.
 
+## RAG Q&A
+
+`src/ask.py` — минимальный RAG поверх существующего retrieval:
+
+- получает вопрос из CLI
+- ищет context через `retrieve_context(question)`
+- превращает найденные `ContextChunk` в текстовый context
+- собирает prompt из инструкции, context и question
+- отправляет prompt в OpenAI API
+- печатает ответ модели
+
+Запуск:
+
+```bash
+python -m src.ask "Когда была эндоскопия желудка?"
+```
+
+Если retrieval не вернул context, CLI печатает `Контекст не найден` и не вызывает OpenAI API.
+
 ## Known Rough Edges
 
 Что нужно будет улучшить после MVP:
@@ -124,14 +155,16 @@ python -m src.eval eval/eval_queries.json
 - синонимы и аббревиатуры могут промахиваться из-за OCR-шума
 - OCR-шум влияет и на embeddings, и на keyword matching
 - итоговый context пока может содержать лишние источники; позже нужен лимит/threshold
+- RAG-ответ зависит от качества OCR: модель может аккуратно восстанавливать очевидный смысл, но не должна выдумывать факты
+- `src.ask` пока не возвращает источники в финальном ответе
 - для offline-режима надёжнее использовать `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`, а не `local_files_only=True` в коде
 
 ## Прогресс
 
-**Готовность MVP: 75%**
+**Готовность MVP: 90%**
 
 ```text
-███████▓░░ 75%
+█████████░ 90%
 ```
 
 - [x] OCR
@@ -139,7 +172,7 @@ python -m src.eval eval/eval_queries.json
 - [x] Embeddings
 - [x] Retrieval MVP
 - [x] Retrieval Eval
-- [ ] RAG Q&A
+- [x] RAG Q&A
 
 ## Commit Stats
 
@@ -184,6 +217,9 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - [x] Retrieval Eval MVP
 - local eval cases: query → expected source
 - PASS/FAIL summary for retrieval regression checks
+- [x] RAG Q&A MVP
+- CLI question → retrieval context → prompt → OpenAI answer
+- no-context guard before LLM call
 
 
 ## Что Дальше
@@ -200,9 +236,10 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - tune chunk expansion and context limits
 - keep in mind: OCR noise and short name-based queries can make pure embeddings miss obvious chunks
 
-- [ ] RAG Q&A
-- question → retrieval → LLM answer
+- [ ] RAG Q&A polish
 - include source chunks/files in responses
+- add reusable `ask(question: str) -> str`
+- add optional token usage/debug output
 
 - [ ] OCR normalization experiments
 - compare raw OCR vs LLM-cleaned OCR
