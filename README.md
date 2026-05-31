@@ -96,8 +96,22 @@ OPENAI_MODEL=your_model_name_here
 - сортировка источников с простым keyword boost по словам запроса
 - сохранение порядка chunks внутри одного source по `chunk_index`
 - CLI печатает metadata и preview текста чанка до 300 символов
+- отдельный debug-режим BM25 keyword search через `--bm25`
 
-Это повышает шанс, что LLM получит не только найденный chunk, но и соседний контекст из того же документа. Ограничение текущего подхода: это всё ещё не полноценный hybrid/BM25 search, поэтому OCR-шум и короткие запросы могут давать лишние chunks.
+Это повышает шанс, что LLM получит не только найденный chunk, но и соседний контекст из того же документа. Ограничение текущего подхода: основной retrieval всё ещё vector-first; BM25 пока доступен отдельно для ручной проверки и ещё не объединён с vector search в полноценный hybrid search.
+
+BM25 debug-запуск:
+
+```bash
+python -m src.search --bm25 "ваш вопрос"
+```
+
+TODO для BM25:
+
+- объединить vector hits и BM25 hits через RRF
+- подключить hybrid hits к neighbor expansion
+- прогнать `src.eval` и ручные quality cases
+- подумать над stopwords/synonyms для запросов вроде `ЛОР` → `оториноларинголог`
 
 ## Retrieval Eval
 
@@ -177,6 +191,7 @@ python -m src.ask "Когда была эндоскопия желудка?"
 - короткие однословные запросы и запросы по именам/кличкам лучше обрабатывать hybrid search
 - синонимы и аббревиатуры могут промахиваться из-за OCR-шума
 - OCR-шум влияет и на embeddings, и на keyword matching
+- BM25 пока работает как отдельный debug-режим и не влияет на основной `retrieve_context()`
 - итоговый context пока может содержать лишние источники; позже нужен лимит/threshold
 - RAG-ответ зависит от качества OCR: модель может аккуратно восстанавливать очевидный смысл, но не должна выдумывать факты
 - `src.ask` выводит источники использованного context, но пока не определяет точный chunk-доказательство для каждого факта ответа
@@ -237,6 +252,7 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - neighbor chunk expansion
 - simple keyword boost for source ordering
 - reusable `retrieve_context()` for CLI/eval
+- BM25 debug CLI mode for keyword retrieval experiments
 - [x] Retrieval Eval MVP
 - local eval cases: query → expected source
 - PASS/FAIL summary for retrieval regression checks
@@ -256,8 +272,10 @@ Agent commits считаются по префиксу `agent:` в commit messag
 
 - [ ] Retrieval quality
 - improve retrieval quality before relying on top-1
-- add hybrid search: keyword/BM25 + vector search
+- merge BM25 + vector search with RRF
+- wire hybrid ranking into `retrieve_context()`
 - rerank top-k results by exact query term matches
+- tune BM25 tokenization, stopwords, and synonym expansion
 - tune chunk expansion and context limits
 - keep in mind: OCR noise and short name-based queries can make pure embeddings miss obvious chunks
 
