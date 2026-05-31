@@ -1,12 +1,14 @@
 import sys
 import re
+import chromadb
+import json
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
+from rank_bm25 import BM25Okapi
 
-import chromadb
 from sentence_transformers import SentenceTransformer
-
 from chromadb.api.models.Collection import Collection
 from chromadb.api.types import Embedding
 from chromadb.api.types import Metadata
@@ -14,7 +16,7 @@ from chromadb.api.types import QueryResult
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 CHROMA_PATH = ROOT_DIR / "output" / "chroma"
-
+CHUNKS_PATH = ROOT_DIR / "output" / "chunks" / "chunks.json"
 
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -64,6 +66,14 @@ class SearchResult:
     context: list[ContextChunk]
 
 
+@dataclass(frozen=True)
+class BM25Hit:
+    source: str
+    chunk_index: int
+    document: str
+    score: float
+
+    
 def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
     # Достаём из metadata стабильный ключ чанка: исходный файл + номер чанка.
     # Если Chroma вернула metadata неожиданного формата, такой результат пропускаем.
@@ -112,6 +122,7 @@ def query_nearest_chunks(
     )
 
 
+# Vector search
 def normalize_hits(results: QueryResult) -> list[Hit]:
     # Chroma возвращает списки списков: внешний уровень нужен для batch-запросов.
     # Здесь запрос один, поэтому дальше работаем с нулевым элементом.
@@ -332,6 +343,67 @@ def search_chunks(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
         return
 
     print_context(result.hits, result.context)
+
+
+# BM25 search
+def tokenize(text: str) -> list[str]:
+    return re.findall(r"\w+", text.casefold())
+
+
+def load_chunks_from_jsonl() -> list[Hit]:
+    hits = []
+
+    with CHUNKS_PATH.open("r", encoding="utf-8") as file:
+        for line in file:
+            row = json.loads(line)
+            metadata = row.get("metadata", {})
+            source = metadata.get("source")
+            chunk_index = metadata.get("chunk_index")
+            text = row.get("text")
+
+            if not isinstance(source, str):
+                continue
+
+            if not isinstance(chunk_index, int):
+                continue
+
+            if not isinstance(text, str):
+                continue
+
+            hits.append(
+                Hit(
+                    source=source,
+                    chunk_index=chunk_index,
+                    document=text,
+                    distance=0.0,
+                )
+            )
+
+    return hits
+
+
+def search_bm25(query: str, top_chunks: int) -> list[BM25Hit]:
+    chunks = load_chunks_from_jsonl()
+    tokenized_documents = [tokenize(chunk.document) for chunk in chunks]
+    bm25 = BM25Okapi(tokenized_documents)
+
+    scores = bm25.get_scores(tokenize(query))
+    ranked_indexes = sorted(
+        range(len(chunks)),
+        key=lambda index: scores[index],
+        reverse=True,
+    )[:top_chunks]
+
+    return [
+        BM25Hit(
+            source=chunks[index].source,
+            chunk_index=chunks[index].chunk_index,
+            document=chunks[index].document,
+            score=float(scores[index]),
+        )
+        for index in ranked_indexes
+        if scores[index] > 0
+    ]
 
 
 def main() -> None:
