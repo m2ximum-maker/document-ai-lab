@@ -412,9 +412,40 @@ def search_bm25(query: str, top_chunks: int) -> list[BM25Hit]:
     ]
 
 
+def print_bm25_hits(hits: list[BM25Hit]) -> None:
+    print(f"Найдено через BM25: {len(hits)}")
+
+    for i, hit in enumerate(hits, start=1):
+        preview = hit.document[:300].replace("\n", " ")
+        print(f"\n[{i}] score={hit.score}")
+        print(f"source={hit.source}")
+        print(f"chunk_index={hit.chunk_index}")
+        print(preview)
+
+
+def search_chunks_bm25(query: str, top_chunks: int = SEARCH_TOP_K) -> None:
+    hits = search_bm25(query, top_chunks)
+
+    if not hits:
+        print("Ничего не найдено через BM25")
+        return
+
+    print_bm25_hits(hits)
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print('Использование: python -m src.search "ваш вопрос"')
+        print('Или: python -m src.search --bm25 "ваш вопрос"')
+        return
+
+    if sys.argv[1] == "--bm25":
+        if len(sys.argv) < 3:
+            print('Использование: python -m src.search --bm25 "ваш вопрос"')
+            return
+
+        query = " ".join(sys.argv[2:])
+        search_chunks_bm25(query)
         return
 
     query = " ".join(sys.argv[1:])
