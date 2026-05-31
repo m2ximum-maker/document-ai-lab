@@ -15,7 +15,7 @@
 7. Чанки сохраняются в `output/chunks/chunks.jsonl`.
 8. `src/embed.py` строит embeddings и сохраняет их в Chroma.
 9. `src/search.py` ищет релевантные чанки и собирает context для RAG.
-10. `src/ask.py` собирает prompt из context + question и отправляет его в OpenAI API.
+10. `src/ask.py` собирает prompt из context + question, отправляет его в OpenAI API и печатает ответ с источниками.
 
 OCR-результаты перезаписываются при каждом запуске `src/ocr.py`.
 
@@ -134,12 +134,23 @@ python -m src.eval eval/eval_queries.json
 - собирает prompt из инструкции, context и question
 - отправляет prompt в OpenAI API
 - печатает ответ модели
+- печатает источники из использованного context, сгруппированные по файлам и chunk indexes
 
 Запуск:
 
 ```bash
 python -m src.ask "Когда была эндоскопия желудка?"
 ```
+
+Пример формата источников:
+
+```text
+Источники:
+- IMG_5371 2.txt: chunks 0, 1, 2
+- IMG_5386.txt: chunks 0, 1
+```
+
+Источники формируются кодом из metadata найденных chunks, а не генерируются LLM. Это делает вывод стабильнее, но важно понимать ограничение: список показывает context, который был передан модели, а не точное доказательство того, какой именно chunk содержал конкретную фразу ответа.
 
 Если retrieval не вернул context, CLI печатает `Контекст не найден` и не вызывает OpenAI API.
 
@@ -156,7 +167,7 @@ python -m src.ask "Когда была эндоскопия желудка?"
 - OCR-шум влияет и на embeddings, и на keyword matching
 - итоговый context пока может содержать лишние источники; позже нужен лимит/threshold
 - RAG-ответ зависит от качества OCR: модель может аккуратно восстанавливать очевидный смысл, но не должна выдумывать факты
-- `src.ask` пока не возвращает источники в финальном ответе
+- `src.ask` выводит источники использованного context, но пока не определяет точный chunk-доказательство для каждого факта ответа
 - для offline-режима надёжнее использовать `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`, а не `local_files_only=True` в коде
 
 ## Прогресс
@@ -219,6 +230,7 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - PASS/FAIL summary for retrieval regression checks
 - [x] RAG Q&A MVP
 - CLI question → retrieval context → prompt → OpenAI answer
+- grouped source files/chunks in final CLI output
 - no-context guard before LLM call
 
 
@@ -237,7 +249,7 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - keep in mind: OCR noise and short name-based queries can make pure embeddings miss obvious chunks
 
 - [ ] RAG Q&A polish
-- include source chunks/files in responses
+- distinguish likely answer chunks from broader context chunks
 - add reusable `ask(question: str) -> str`
 - add optional token usage/debug output
 

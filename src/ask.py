@@ -89,8 +89,7 @@ def main() -> None:
 
     context_text = build_context_text(search_result.context)
     prompt = build_prompt(question, context_text)
-    # answer = ask_llm(prompt)
-    answer = "Гастроскопию Степанову Максиму Руслановичу 26.12.2023 делал врач Углов Роман Михайлович."
+    answer = ask_llm(prompt)
     print(answer)
     print(format_sources(search_result.context))
 
