@@ -57,6 +57,22 @@ def ask_llm(prompt: str) -> str:
     return response.output_text
 
 
+def format_sources(chunks: list[ContextChunk]) -> str:
+    lines = ["Источники:"]
+    seen = set()
+
+    for chunk in chunks:
+        key = (chunk.source, chunk.chunk_index)
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        lines.append(f"- {chunk.source}, chunk {chunk.chunk_index}")
+
+    return "\n".join(lines)
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print('Использование: python -m src.ask "ваш вопрос"')
@@ -73,6 +89,7 @@ def main() -> None:
     prompt = build_prompt(question, context_text)
     answer = ask_llm(prompt)
     print(answer)
+    print(format_sources(search_result.context))
 
 
 if __name__ == "__main__":
