@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 import os
 import sys
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from src.search import retrieve_context, ContextChunk
+if TYPE_CHECKING:
+    from src.search import ContextChunk
 
 load_dotenv()
 
@@ -57,6 +61,24 @@ def ask_llm(prompt: str) -> str:
     return response.output_text
 
 
+def stream_llm(prompt: str) -> str:
+    if model is None:
+        raise ValueError("OPENAI_MODEL не установлена")
+
+    client = get_client()
+    answer_parts: list[str] = []
+
+    with client.responses.stream(model=model, input=prompt) as stream:
+        for event in stream:
+            if event.type != "response.output_text.delta":
+                continue
+
+            print(event.delta, end="", flush=True)
+            answer_parts.append(event.delta)
+
+    return "".join(answer_parts)
+
+
 def format_sources(chunks: list[ContextChunk]) -> str:
     sources: dict[str, set[int]] = {}
 
@@ -81,6 +103,11 @@ def main() -> None:
         return
 
     question = " ".join(sys.argv[1:])
+    print("Ищу контекст...", flush=True)
+
+    # Import retrieval lazily so CLI status appears before heavy dependencies load.
+    from src.search import retrieve_context
+
     search_result = retrieve_context(question)
 
     if not search_result.context:
@@ -89,8 +116,10 @@ def main() -> None:
 
     context_text = build_context_text(search_result.context)
     prompt = build_prompt(question, context_text)
-    answer = ask_llm(prompt)
-    print(answer)
+    print(f"Найдено context chunks: {len(search_result.context)}")
+    print("Генерирую ответ...")
+    stream_llm(prompt)
+    print()
     print(format_sources(search_result.context))
 
 

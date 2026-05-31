@@ -133,13 +133,25 @@ python -m src.eval eval/eval_queries.json
 - превращает найденные `ContextChunk` в текстовый context
 - собирает prompt из инструкции, context и question
 - отправляет prompt в OpenAI API
-- печатает ответ модели
+- печатает короткие CLI-статусы для долгих этапов
+- стримит ответ модели по мере генерации
 - печатает источники из использованного context, сгруппированные по файлам и chunk indexes
 
 Запуск:
 
 ```bash
 python -m src.ask "Когда была эндоскопия желудка?"
+```
+
+Пример CLI-вывода:
+
+```text
+Ищу контекст...
+Найдено context chunks: 10
+Генерирую ответ...
+Эндоскопия желудка была ...
+Источники:
+- IMG_5371 2.txt: chunks 0, 1, 2
 ```
 
 Пример формата источников:
@@ -230,6 +242,7 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - PASS/FAIL summary for retrieval regression checks
 - [x] RAG Q&A MVP
 - CLI question → retrieval context → prompt → OpenAI answer
+- streaming CLI answer generation
 - grouped source files/chunks in final CLI output
 - no-context guard before LLM call
 
