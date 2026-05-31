@@ -16,7 +16,7 @@ from chromadb.api.types import QueryResult
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 CHROMA_PATH = ROOT_DIR / "output" / "chroma"
-CHUNKS_PATH = ROOT_DIR / "output" / "chunks" / "chunks.json"
+CHUNKS_PATH = ROOT_DIR / "output" / "chunks" / "chunks.jsonl"
 
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -36,6 +36,13 @@ class Hit:
     chunk_index: int
     document: str
     distance: float
+
+
+@dataclass(frozen=True)
+class ChunkRecord:
+    source: str
+    chunk_index: int
+    document: str
 
 
 @dataclass(frozen=True)
@@ -73,7 +80,7 @@ class BM25Hit:
     document: str
     score: float
 
-    
+
 def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
     # Достаём из metadata стабильный ключ чанка: исходный файл + номер чанка.
     # Если Chroma вернула metadata неожиданного формата, такой результат пропускаем.
@@ -350,8 +357,8 @@ def tokenize(text: str) -> list[str]:
     return re.findall(r"\w+", text.casefold())
 
 
-def load_chunks_from_jsonl() -> list[Hit]:
-    hits = []
+def load_chunks_from_jsonl() -> list[ChunkRecord]:
+    chunks = []
 
     with CHUNKS_PATH.open("r", encoding="utf-8") as file:
         for line in file:
@@ -370,16 +377,15 @@ def load_chunks_from_jsonl() -> list[Hit]:
             if not isinstance(text, str):
                 continue
 
-            hits.append(
-                Hit(
+            chunks.append(
+                ChunkRecord(
                     source=source,
                     chunk_index=chunk_index,
                     document=text,
-                    distance=0.0,
                 )
             )
 
-    return hits
+    return chunks
 
 
 def search_bm25(query: str, top_chunks: int) -> list[BM25Hit]:
