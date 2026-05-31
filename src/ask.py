@@ -58,17 +58,19 @@ def ask_llm(prompt: str) -> str:
 
 
 def format_sources(chunks: list[ContextChunk]) -> str:
-    lines = ["Источники:"]
-    seen = set()
+    sources: dict[str, set[int]] = {}
 
     for chunk in chunks:
-        key = (chunk.source, chunk.chunk_index)
+        if chunk.source not in sources:
+            sources[chunk.source] = set()
 
-        if key in seen:
-            continue
+        sources[chunk.source].add(chunk.chunk_index)
 
-        seen.add(key)
-        lines.append(f"- {chunk.source}, chunk {chunk.chunk_index}")
+    lines = ["Источники:"]
+
+    for source, chunk_indexes in sources.items():
+        indexes_text = ", ".join(str(index) for index in sorted(chunk_indexes))
+        lines.append(f"- {source}: chunks {indexes_text}")
 
     return "\n".join(lines)
 
@@ -87,7 +89,8 @@ def main() -> None:
 
     context_text = build_context_text(search_result.context)
     prompt = build_prompt(question, context_text)
-    answer = ask_llm(prompt)
+    # answer = ask_llm(prompt)
+    answer = "Гастроскопию Степанову Максиму Руслановичу 26.12.2023 делал врач Углов Роман Михайлович."
     print(answer)
     print(format_sources(search_result.context))
 
