@@ -63,15 +63,9 @@ class ContextChunk:
 
 @dataclass(frozen=True)
 class NeighborExpansionPlan:
-    distance_by_key: dict[ChunkKey, float]
+    distance_by_key: dict[ChunkKey, float | None]
     wanted_by_source: dict[str, set[int]]
     source_order: list[str]
-
-
-@dataclass(frozen=True)
-class SearchResult:
-    hits: list[Hit]
-    context: list[ContextChunk]
 
 
 @dataclass(frozen=True)
@@ -90,6 +84,12 @@ class HybridHit:
     distance: float | None
     bm25_score: float | None
     rrf_score: float
+
+
+@dataclass(frozen=True)
+class SearchResult:
+    hits: list[HybridHit]
+    context: list[ContextChunk]
 
 
 def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
@@ -178,20 +178,22 @@ def normalize_hits(results: QueryResult) -> list[Hit]:
     return hits
 
 
-def plan_neighbor_expansion(query: str, hits: list[Hit]) -> NeighborExpansionPlan:
-    # distance хранится только для чанков, которые реально нашёл vector search.
+def plan_neighbor_expansion(query: str, hits: list[HybridHit]) -> NeighborExpansionPlan:
+    # distance хранится только для чанков, которые пришли из vector search.
     # У соседних чанков distance будет None, потому что они добавляются как контекст.
-    distance_by_key: dict[ChunkKey, float] = {}
+    # У BM25-only chunks distance тоже None, потому что у них нет vector distance.
+    distance_by_key: dict[ChunkKey, float | None] = {}
     wanted_by_source: dict[str, set[int]] = {}
     source_order: list[str] = []
 
-    # Перед expansion поднимаем exact keyword matches внутри vector top-k.
-    # Иначе релевантный chunk с точными словами запроса может не попасть в top EXPAND_TOP_N.
+    # Перед expansion поднимаем exact keyword matches внутри hybrid top-k,
+    # но сохраняем RRF как следующий важный сигнал ранжирования.
     expansion_hits = sorted(
         hits,
         key=lambda hit: (
+            -hit.rrf_score,
             -keyword_score(query, hit.document),
-            hit.distance,
+            hit.distance if hit.distance is not None else float("inf"),
         ),
     )[:EXPAND_TOP_N]
 
@@ -264,23 +266,13 @@ def load_expanded_chunks(
     return chunks_by_source
 
 
-def sort_sources_by_hybrid_score(
-    query: str,
-    chunks_by_source: dict[str, list[ExpandedChunk]],
+def keep_loaded_sources(
     source_order: list[str],
+    chunks_by_source: dict[str, list[ExpandedChunk]],
 ) -> list[str]:
-    # Пересортировываем документы по простой hybrid-логике:
-    # сначала по keyword совпадениям, затем по vector distance.
-    sorted_sources = [source for source in source_order if chunks_by_source.get(source)]
-
-    sorted_sources.sort(
-        key=lambda source: (
-            -max(keyword_score(query, chunk.document) for chunk in chunks_by_source[source]),
-            min(chunk.distance for chunk in chunks_by_source[source] if chunk.distance is not None),
-        )
-    )
-
-    return sorted_sources
+    # После RRF merge порядок источников уже отражает hybrid ranking.
+    # Здесь только убираем источники, для которых не удалось дозагрузить chunks.
+    return [source for source in source_order if chunks_by_source.get(source)]
 
 
 def build_context(
@@ -300,8 +292,8 @@ def build_context(
     ]
 
 
-def print_context(hits: list[Hit], context: list[ContextChunk]) -> None:
-    print(f"Найдено через vector search: {len(hits)}")
+def print_context(hits: list[HybridHit], context: list[ContextChunk]) -> None:
+    print(f"Найдено через hybrid search: {len(hits)}")
     print(f"Расширено соседями top hits: {min(len(hits), EXPAND_TOP_N)}")
     print(f"Итоговый context chunks: {len(context)}")
 
@@ -326,25 +318,22 @@ def retrieve_context(query: str, top_chunks: int = SEARCH_TOP_K) -> SearchResult
 
     query_embedding = embed_query(query, model)
     results = query_nearest_chunks(collection, query_embedding, top_chunks)
-    hits = normalize_hits(results)
+    vector_hits = normalize_hits(results)
+    bm25_hits = search_bm25(query, top_chunks)
+    hits = merge_hits_by_rrf(vector_hits, bm25_hits)
 
     if not hits:
         return SearchResult(hits=[], context=[])
 
     # Какие source/chunk_index нужно дозагрузить (соседние чанки)
-    # и какие distance были у чанков, найденных самим vector search.
+    # и какие distance были у чанков, найденных vector search.
     expansion_plan = plan_neighbor_expansion(query, hits)
 
     # Чанки, сгруппированные по source: найденные chunks + их соседи.
     chunks_by_source = load_expanded_chunks(collection, expansion_plan)
 
-    # Source-документы, пересортированные по hybrid-оценке:
-    # keyword score, затем vector distance.
-    sorted_sources = sort_sources_by_hybrid_score(
-        query,
-        chunks_by_source,
-        expansion_plan.source_order,
-    )
+    # Source-документы в порядке hybrid ranking.
+    sorted_sources = keep_loaded_sources(expansion_plan.source_order, chunks_by_source)
 
     # Финальный плоский список chunks в порядке, в котором их печатаем
     # или передаём дальше в RAG-контекст.

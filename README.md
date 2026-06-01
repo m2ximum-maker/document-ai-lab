@@ -88,17 +88,19 @@ OPENAI_MODEL=your_model_name_here
 
 ## Retrieval MVP
 
-`src/search.py` сейчас делает MVP-поиск по локальной Chroma collection:
+`src/search.py` сейчас делает MVP hybrid-поиск по локальной Chroma collection и `chunks.jsonl`:
 
 - vector search по embeddings, `top_k=10`
+- BM25 keyword search по `output/chunks/chunks.jsonl`, `top_k=10`
+- merge vector hits + BM25 hits через RRF
 - расширение соседними chunks для top-5 результатов, `neighbor_window=1`
 - дедупликация chunks
-- сортировка источников с простым keyword boost по словам запроса
+- сохранение порядка источников из hybrid ranking
 - сохранение порядка chunks внутри одного source по `chunk_index`
-- CLI печатает metadata и preview текста чанка до 300 символов
+- основной CLI печатает metadata и полный текст context chunks
 - отдельный debug-режим BM25 keyword search через `--bm25`
 
-Это повышает шанс, что LLM получит не только найденный chunk, но и соседний контекст из того же документа. Ограничение текущего подхода: основной retrieval всё ещё vector-first; BM25 пока доступен отдельно для ручной проверки и ещё не объединён с vector search в полноценный hybrid search.
+Это повышает шанс, что LLM получит не только найденный chunk, но и соседний контекст из того же документа. BM25 помогает точным словам, датам, фамилиям и медицинским терминам; vector search помогает смысловым совпадениям. RRF объединяет обе выдачи по рангу, не сравнивая напрямую vector distance и BM25 score.
 
 BM25 debug-запуск:
 
@@ -108,10 +110,10 @@ python -m src.search --bm25 "ваш вопрос"
 
 TODO для BM25:
 
-- объединить vector hits и BM25 hits через RRF
-- подключить hybrid hits к neighbor expansion
-- прогнать `src.eval` и ручные quality cases
 - подумать над stopwords/synonyms для запросов вроде `ЛОР` → `оториноларинголог`
+- улучшить токенизацию, чтобы короткие слова не матчились внутри нерелевантных слов
+- подобрать thresholds/top-k для BM25, чтобы шумные lexical hits не вытесняли смысловые
+- прогонять `src.eval` и ручные quality cases после каждого изменения retrieval
 
 ## Retrieval Eval
 
@@ -184,14 +186,13 @@ python -m src.ask "Когда была эндоскопия желудка?"
 
 Что нужно будет улучшить после MVP:
 
-- pure vector search может поставить OCR-мусор выше очевидного keyword match
+- hybrid search может поднять OCR-мусор или нерелевантный keyword match выше смыслового результата
 - top-1 выдаче пока нельзя полностью доверять
 - neighbor expansion повышает recall, но может подтягивать соседей от нерелевантных hits
-- simple keyword boost помогает CLI-выдаче, но это не полноценный reranker
-- короткие однословные запросы и запросы по именам/кличкам лучше обрабатывать hybrid search
+- RRF merge помогает объединять vector/BM25, но это не полноценный reranker
+- короткие однословные запросы и запросы по именам/кличкам всё ещё требуют tuning
 - синонимы и аббревиатуры могут промахиваться из-за OCR-шума
 - OCR-шум влияет и на embeddings, и на keyword matching
-- BM25 пока работает как отдельный debug-режим и не влияет на основной `retrieve_context()`
 - итоговый context пока может содержать лишние источники; позже нужен лимит/threshold
 - RAG-ответ зависит от качества OCR: модель может аккуратно восстанавливать очевидный смысл, но не должна выдумывать факты
 - `src.ask` выводит источники использованного context, но пока не определяет точный chunk-доказательство для каждого факта ответа
@@ -248,11 +249,11 @@ Agent commits считаются по префиксу `agent:` в commit messag
 - stale chunks cleanup
 - upsert by stable chunk id
 - [x] Retrieval MVP
-- semantic search over document chunks
+- hybrid search over document chunks: vector + BM25 + RRF
 - neighbor chunk expansion
-- simple keyword boost for source ordering
 - reusable `retrieve_context()` for CLI/eval
 - BM25 debug CLI mode for keyword retrieval experiments
+- unit tests for RRF merge behavior
 - [x] Retrieval Eval MVP
 - local eval cases: query → expected source
 - PASS/FAIL summary for retrieval regression checks
@@ -272,8 +273,6 @@ Agent commits считаются по префиксу `agent:` в commit messag
 
 - [ ] Retrieval quality
 - improve retrieval quality before relying on top-1
-- merge BM25 + vector search with RRF
-- wire hybrid ranking into `retrieve_context()`
 - rerank top-k results by exact query term matches
 - tune BM25 tokenization, stopwords, and synonym expansion
 - tune chunk expansion and context limits
