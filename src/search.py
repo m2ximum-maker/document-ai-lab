@@ -25,6 +25,7 @@ COLLECTION_NAME = "documents"
 SEARCH_TOP_K = 10
 EXPAND_TOP_N = 5
 NEIGHBOR_WINDOW = 1
+RRF_K = 60
 
 # tuple[source, chunk_index]
 ChunkKey = tuple[str, int]
@@ -79,6 +80,16 @@ class BM25Hit:
     chunk_index: int
     document: str
     score: float
+
+
+@dataclass(frozen=True)
+class HybridHit:
+    source: str
+    chunk_index: int
+    document: str
+    distance: float | None
+    bm25_score: float | None
+    rrf_score: float
 
 
 def metadata_key(metadata: Metadata) -> tuple[str, int] | None:
@@ -410,6 +421,49 @@ def search_bm25(query: str, top_chunks: int) -> list[BM25Hit]:
         for index in ranked_indexes
         if scores[index] > 0
     ]
+
+
+def merge_hits_by_rrf(
+    vector_hits: list[Hit],
+    bm25_hits: list[BM25Hit],
+) -> list[HybridHit]:
+    documents_by_key: dict[ChunkKey, str] = {}
+    distance_by_key: dict[ChunkKey, float] = {}
+    bm25_score_by_key: dict[ChunkKey, float] = {}
+    rrf_score_by_key: dict[ChunkKey, float] = {}
+
+    for rank, hit in enumerate(vector_hits, start=1):
+        key = (hit.source, hit.chunk_index)
+        documents_by_key[key] = hit.document
+        distance_by_key[key] = hit.distance
+        rrf_score_by_key[key] = rrf_score_by_key.get(key, 0.0) + 1 / (RRF_K + rank)
+
+    for rank, hit in enumerate(bm25_hits, start=1):
+        key = (hit.source, hit.chunk_index)
+        documents_by_key[key] = hit.document
+        bm25_score_by_key[key] = hit.score
+        rrf_score_by_key[key] = rrf_score_by_key.get(key, 0.0) + 1 / (RRF_K + rank)
+
+    hybrid_hits = [
+        HybridHit(
+            source=source,
+            chunk_index=chunk_index,
+            document=documents_by_key[(source, chunk_index)],
+            distance=distance_by_key.get((source, chunk_index)),
+            bm25_score=bm25_score_by_key.get((source, chunk_index)),
+            rrf_score=rrf_score_by_key[(source, chunk_index)],
+        )
+        for source, chunk_index in rrf_score_by_key
+    ]
+
+    return sorted(
+        hybrid_hits,
+        key=lambda hit: (
+            -hit.rrf_score,
+            hit.distance if hit.distance is not None else float("inf"),
+            -(hit.bm25_score or 0.0),
+        ),
+    )
 
 
 def print_bm25_hits(hits: list[BM25Hit]) -> None:
