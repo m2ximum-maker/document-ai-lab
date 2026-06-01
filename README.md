@@ -31,6 +31,8 @@ OCR-результаты перезаписываются при каждом з
 │   └── chroma/            # локальная Chroma vector DB
 ├── eval/
 │   └── eval_queries.example.json # пример retrieval eval cases
+├── tests/
+│   └── test_search_rrf.py # unit tests для hybrid RRF merge
 ├── src/
 │   ├── __init__.py        # делает src Python-пакетом
 │   ├── ocr.py             # OCR pipeline: image → raw/cleaned txt
@@ -200,10 +202,10 @@ python -m src.ask "Когда была эндоскопия желудка?"
 
 ## Прогресс
 
-**Готовность MVP: 90%**
+**Готовность MVP: 95%**
 
 ```text
-█████████░ 90%
+█████████▌ 95%
 ```
 
 - [x] OCR
@@ -215,9 +217,9 @@ python -m src.ask "Когда была эндоскопия желудка?"
 
 ## Commit Stats
 
-- Всего коммитов: 39
-- Agent commits: 27
-- User commits: 12
+- Всего коммитов: 56
+- Agent commits: 36
+- User commits: 20
 
 Agent commits считаются по префиксу `agent:` в commit message.
 
@@ -230,8 +232,8 @@ Agent commits считаются по префиксу `agent:` в commit messag
 
 Текущий commit split:
 
-- AI-assisted commits: 27
-- Manual commits: 12
+- AI-assisted commits: 36
+- Manual commits: 20
 
 ## Что сделано
 
