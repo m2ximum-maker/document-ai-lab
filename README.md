@@ -1,8 +1,63 @@
-# OCR Test
+# Smart Medical Archive
 
-Площадка для проб OCR, document retrieval и RAG Q&A. Цель проекта — быстро проверять, как EasyOCR распознает фото документов, превращать результат в chunks/embeddings, искать релевантный контекст и отвечать на вопросы по найденным фрагментам.
+Личный архив медицинских документов для всей семьи.
 
-## Pipeline
+Проект помогает превращать фото и сканы документов в текст, искать по ним, задавать вопросы и постепенно собирать структурированную медицинскую историю с указанием источников.
+
+Коротко:
+
+> Личный ChatGPT по медицинским документам семьи.
+
+Важно: это не медицинский советчик, не диагностическая система и не замена врачу. Проект нужен, чтобы помнить, находить, группировать и цитировать уже существующие документы.
+
+## Куда Идём
+
+Сейчас проект вырос из OCR/RAG-песочницы в Smart Medical Archive.
+
+Цель: не просто искать по файлам вроде `IMG_5371.txt`, а находить информацию по медицинской истории:
+
+- ЖКТ
+- ЛОР
+- кровь
+- спина
+- аллергия
+- лекарства
+- ветдокументы
+
+Пользователь в будущем должен иметь возможность спрашивать:
+
+```text
+Что мне говорил ЛОР?
+Какие лекарства мне назначали от желудка?
+Когда последний раз сдавал кровь?
+Что было по щитовидке?
+К каким врачам я ходил с марта по май 2026 года?
+Что назначали питомцу?
+```
+
+Подробное описание направления проекта: [docs/PROJECT_DIRECTION.md](docs/PROJECT_DIRECTION.md).
+
+Текущий прогресс и ближайшие шаги: [docs/PROGRESS.md](docs/PROGRESS.md).
+
+## Текущий Pipeline
+
+```text
+input images
+↓
+OCR
+↓
+output/cleaned/*.txt
+↓
+src/chunk.py
+↓
+output/chunks/chunks.jsonl
+↓
+src/embed.py / Chroma
+↓
+src/search.py / src.ask.py
+```
+
+Подробно:
 
 1. Изображения кладутся в `input/`.
 2. `src/ocr.py` ищет `.jpg`, `.jpeg`, `.png`.
@@ -19,44 +74,60 @@
 
 OCR-результаты перезаписываются при каждом запуске `src/ocr.py`.
 
+## SQLite Catalog
+
+Следующий архитектурный слой — SQLite-каталог рядом с текущим pipeline.
+
+SQLite нужен не вместо Chroma. Их роли разные:
+
+- Chroma хранит semantic index по чанкам и помогает искать похожий текст.
+- SQLite хранит документы и структурированные metadata.
+
+Будущие metadata после OCR:
+
+- владелец документа
+- дата документа
+- тип документа
+- врач
+- специальность
+- клиника
+- статус и уверенность извлечения
+
+На первом шаге каталог добавляется аккуратно и отдельно от текущего поиска: без изменения `chunk.py`, `search.py`, `ask.py`, `chunks.jsonl` и без миграции Chroma.
+
 ## Структура Проекта
 
 ```text
 .
-├── input/                 # входные изображения для OCR
+├── docs/
+│   ├── PROJECT_DIRECTION.md # направление проекта и роль SQLite/metadata
+│   └── PROGRESS.md          # прогресс, ближайшие шаги и guardrails
+├── input/                   # входные изображения для OCR
 ├── output/
-│   ├── raw/               # сырой текст EasyOCR
-│   ├── cleaned/           # очищенный OCR-текст
-│   ├── chunks/            # chunks.jsonl для будущего поиска/RAG
-│   └── chroma/            # локальная Chroma vector DB
+│   ├── raw/                 # сырой текст EasyOCR
+│   ├── cleaned/             # очищенный OCR-текст
+│   ├── chunks/              # chunks.jsonl для поиска/RAG
+│   └── chroma/              # локальная Chroma vector DB
 ├── eval/
 │   └── eval_queries.example.json # пример retrieval eval cases
 ├── tests/
-│   └── test_search_rrf.py # unit tests для hybrid RRF merge
+│   └── test_search_rrf.py   # unit tests для hybrid RRF merge
 ├── src/
-│   ├── __init__.py        # делает src Python-пакетом
-│   ├── ocr.py             # OCR pipeline: image → raw/cleaned txt
-│   ├── chunk.py           # chunking pipeline: cleaned txt → chunks.jsonl
-│   ├── embed.py           # embedding pipeline: chunks.jsonl → Chroma
-│   ├── eval.py            # простой retrieval smoke test
-│   ├── search.py          # retrieval MVP: query → context chunks
-│   ├── ask.py             # RAG Q&A MVP: question → retrieval → LLM answer
-│   └── schemas.py         # общие типы данных
-├── pyproject.toml         # настройки форматирования
-├── requirements.txt       # зависимости проекта
-├── README.md              # описание проекта
-└── .gitignore             # игнор локальных данных и окружения
+│   ├── __init__.py          # делает src Python-пакетом
+│   ├── ocr.py               # OCR pipeline: image -> raw/cleaned txt
+│   ├── chunk.py             # chunking pipeline: cleaned txt -> chunks.jsonl
+│   ├── embed.py             # embedding pipeline: chunks.jsonl -> Chroma
+│   ├── eval.py              # простой retrieval smoke test
+│   ├── search.py            # retrieval MVP: query -> context chunks
+│   ├── ask.py               # RAG Q&A MVP: question -> retrieval -> LLM answer
+│   └── schemas.py           # общие типы данных
+├── pyproject.toml           # настройки форматирования
+├── requirements.txt         # зависимости проекта
+├── README.md                # точка входа в проект
+└── .gitignore               # игнор локальных данных и окружения
 ```
 
 `input/` и `output/` содержат локальные данные и не попадают в git, кроме `.gitkeep` файлов для сохранения структуры папок.
-
-## EXIF Issue
-
-Фото с телефона часто физически лежит боком, а поворот хранится в EXIF. Просмотрщик показывает его правильно, но OCR-библиотека может читать исходные пиксели без поворота. Поэтому перед OCR используется `ImageOps.exif_transpose()`.
-
-## Почему изображения
-
-Основной сценарий — фото документов с телефона, обычно это `.jpg/.jpeg`. PNG тоже поддерживается для скриншотов и тестов. PDF сейчас не поддерживается намеренно, чтобы пайплайн оставался простым.
 
 ## Как Запустить
 
@@ -110,16 +181,9 @@ BM25 debug-запуск:
 python -m src.search --bm25 "ваш вопрос"
 ```
 
-TODO для BM25:
-
-- подумать над stopwords/synonyms для запросов вроде `ЛОР` → `оториноларинголог`
-- улучшить токенизацию, чтобы короткие слова не матчились внутри нерелевантных слов
-- подобрать thresholds/top-k для BM25, чтобы шумные lexical hits не вытесняли смысловые
-- прогонять `src.eval` и ручные quality cases после каждого изменения retrieval
-
 ## Retrieval Eval
 
-`src/eval.py` — простой smoke/quality test для retrieval. Он читает eval cases, запускает `retrieve_context(query)` и проверяет только одно: попал ли `expected_source` в найденный context. Качество ответа LLM, точность chunk index и наличие конкретных фраз внутри текста пока не оцениваются.
+`src/eval.py` — простой smoke/quality test для retrieval. Он читает eval cases, запускает `retrieve_context(query)` и проверяет только одно: попал ли `expected_source` в найденный context.
 
 Формат локального `eval/eval_queries.json`:
 
@@ -139,8 +203,6 @@ python -m src.eval eval/eval_queries.json
 ```
 
 `eval/eval_queries.json` игнорируется git, потому что может содержать личные данные. Для коммита есть обезличенный пример: `eval/eval_queries.example.json`.
-
-Для MVP нормальна ситуация, когда часть quality cases падает: это показывает слабые места retrieval на OCR-шуме, коротких запросах и синонимах. Такой eval нужен как baseline, чтобы видеть, стали ли изменения лучше или хуже.
 
 ## RAG Q&A
 
@@ -172,17 +234,17 @@ python -m src.ask "Когда была эндоскопия желудка?"
 - IMG_5371 2.txt: chunks 0, 1, 2
 ```
 
-Пример формата источников:
-
-```text
-Источники:
-- IMG_5371 2.txt: chunks 0, 1, 2
-- IMG_5386.txt: chunks 0, 1
-```
-
-Источники формируются кодом из metadata найденных chunks, а не генерируются LLM. Это делает вывод стабильнее, но важно понимать ограничение: список показывает context, который был передан модели, а не точное доказательство того, какой именно chunk содержал конкретную фразу ответа.
+Источники формируются кодом из metadata найденных chunks, а не генерируются LLM. Это делает вывод стабильнее, но список показывает context, который был передан модели, а не точное доказательство того, какой именно chunk содержал конкретную фразу ответа.
 
 Если retrieval не вернул context, CLI печатает `Контекст не найден` и не вызывает OpenAI API.
+
+## EXIF Issue
+
+Фото с телефона часто физически лежит боком, а поворот хранится в EXIF. Просмотрщик показывает его правильно, но OCR-библиотека может читать исходные пиксели без поворота. Поэтому перед OCR используется `ImageOps.exif_transpose()`.
+
+## Почему Изображения
+
+Основной сценарий — фото документов с телефона, обычно это `.jpg/.jpeg`. PNG тоже поддерживается для скриншотов и тестов. PDF сейчас не поддерживается намеренно, чтобы пайплайн оставался простым.
 
 ## Known Rough Edges
 
@@ -199,98 +261,3 @@ python -m src.ask "Когда была эндоскопия желудка?"
 - RAG-ответ зависит от качества OCR: модель может аккуратно восстанавливать очевидный смысл, но не должна выдумывать факты
 - `src.ask` выводит источники использованного context, но пока не определяет точный chunk-доказательство для каждого факта ответа
 - для offline-режима надёжнее использовать `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`, а не `local_files_only=True` в коде
-
-## Прогресс
-
-**Готовность MVP: 95%**
-
-```text
-█████████▌ 95%
-```
-
-- [x] OCR
-- [x] Chunking
-- [x] Embeddings
-- [x] Retrieval MVP
-- [x] Retrieval Eval
-- [x] RAG Q&A
-
-## Commit Stats
-
-- Всего коммитов: 56
-- Agent commits: 36
-- User commits: 20
-
-Agent commits считаются по префиксу `agent:` в commit message.
-
-## Development Workflow
-
-Проект развивается в гибридном формате:
-
-- архитектурные и продуктовые решения принимает автор проекта
-- часть реализации выполняется с помощью AI coding tools
-
-Текущий commit split:
-
-- AI-assisted commits: 36
-- Manual commits: 20
-
-## Что сделано
-
-- [x] OCR MVP
-- image → OCR → txt
-- EXIF normalization
-- batch processing
-- JPG-first pipeline
-- [x] Chunking MVP
-- cleaned txt → chunks.jsonl
-- source file metadata
-- chunk index metadata
-- [x] Embeddings MVP
-- chunks.jsonl → Chroma
-- stale chunks cleanup
-- upsert by stable chunk id
-- [x] Retrieval MVP
-- hybrid search over document chunks: vector + BM25 + RRF
-- neighbor chunk expansion
-- reusable `retrieve_context()` for CLI/eval
-- BM25 debug CLI mode for keyword retrieval experiments
-- unit tests for RRF merge behavior
-- [x] Retrieval Eval MVP
-- local eval cases: query → expected source
-- PASS/FAIL summary for retrieval regression checks
-- [x] RAG Q&A MVP
-- CLI question → retrieval context → prompt → OpenAI answer
-- streaming CLI answer generation
-- grouped source files/chunks in final CLI output
-- no-context guard before LLM call
-
-
-## Что Дальше
-
-План развития проекта в сторону document AI / RAG.
-
-- [ ] Add more sample documents
-- build small local document archive
-
-- [ ] Retrieval quality
-- improve retrieval quality before relying on top-1
-- rerank top-k results by exact query term matches
-- tune BM25 tokenization, stopwords, and synonym expansion
-- tune chunk expansion and context limits
-- keep in mind: OCR noise and short name-based queries can make pure embeddings miss obvious chunks
-
-- [ ] RAG Q&A polish
-- distinguish likely answer chunks from broader context chunks
-- add reusable `ask(question: str) -> str`
-- add optional token usage/debug output
-
-- [ ] OCR normalization experiments
-- compare raw OCR vs LLM-cleaned OCR
-- evaluate retrieval quality differences
-
-- [ ] Optional future work
-- SQLite archive/catalog
-- metadata filtering
-- structured extraction (JSON)
-- local LLM support
