@@ -52,6 +52,10 @@ env/
 eval/eval_queries.json
 eval/*local*.json
 
+# Sqllite
+output/catalog/*
+!output/catalog/.gitkeep
+
 !input/.gitkeep
 !output/.gitkeep
 !output/raw/.gitkeep
