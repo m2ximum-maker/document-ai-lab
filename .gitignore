@@ -56,8 +56,13 @@ eval/*local*.json
 output/catalog/*
 !output/catalog/.gitkeep
 
+# Extracted metadata
+output/metadata/*
+!output/metadata/.gitkeep
+
 !input/.gitkeep
 !output/.gitkeep
 !output/raw/.gitkeep
 !output/cleaned/.gitkeep
+!output/metadata/.gitkeep
 !requirements.txt
