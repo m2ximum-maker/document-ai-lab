@@ -72,11 +72,16 @@ src/search.py / src.ask.py
 9. `src/search.py` ищет релевантные чанки и собирает context для RAG.
 10. `src/ask.py` собирает prompt из context + question, отправляет его в OpenAI API и печатает ответ с источниками.
 
+Параллельно текущему RAG-пайплайну добавляются первые структурные слои:
+
+- `src/catalog.py` создаёт базовый SQLite-каталог документов из `output/cleaned/*.txt`.
+- `src/extract_metadata.py` готовится извлекать metadata из OCR-текста в отдельные JSON-файлы `output/metadata/*.json`.
+
 OCR-результаты перезаписываются при каждом запуске `src/ocr.py`.
 
 ## SQLite Catalog
 
-Следующий архитектурный слой — SQLite-каталог рядом с текущим pipeline.
+SQLite-каталог добавляется рядом с текущим pipeline.
 
 SQLite нужен не вместо Chroma. Их роли разные:
 
@@ -93,7 +98,34 @@ SQLite нужен не вместо Chroma. Их роли разные:
 - клиника
 - статус и уверенность извлечения
 
-На первом шаге каталог добавляется аккуратно и отдельно от текущего поиска: без изменения `chunk.py`, `search.py`, `ask.py`, `chunks.jsonl` и без миграции Chroma.
+Сейчас `src/catalog.py` создаёт `output/catalog/catalog.db` и добавляет документы из `output/cleaned/*.txt` без изменения `chunk.py`, `search.py`, `ask.py`, `chunks.jsonl` и без миграции Chroma.
+
+## Metadata Extraction
+
+`src/extract_metadata.py` — отдельный слой для будущего извлечения metadata из `output/cleaned/*.txt`.
+
+Текущий статус:
+
+- определена схема `DocumentMetadata`;
+- определён JSON Schema-контракт для structured output от LLM;
+- добавлен prompt для извлечения metadata;
+- скрипт пока только находит cleaned-документы и печатает список;
+- LLM-вызов и запись `output/metadata/*.json` будут добавлены отдельным шагом.
+
+Планируемые поля metadata:
+
+- `source`
+- `owner`
+- `doc_type`
+- `doc_date`
+- `doctor`
+- `specialty`
+- `clinic`
+- `summary`
+- `confidence`
+- `warnings`
+
+Важно: реальные имена владельцев не должны попадать в git. Локальный словарь `src/private_owners.json` игнорируется, а в metadata и будущий каталог должны попадать стабильные псевдонимы вроде `person_1` или `cat_1`. Для репозитория можно держать только обезличенный пример `src/private_owners.example.json`.
 
 ## Структура Проекта
 
@@ -107,7 +139,9 @@ SQLite нужен не вместо Chroma. Их роли разные:
 │   ├── raw/                 # сырой текст EasyOCR
 │   ├── cleaned/             # очищенный OCR-текст
 │   ├── chunks/              # chunks.jsonl для поиска/RAG
-│   └── chroma/              # локальная Chroma vector DB
+│   ├── chroma/              # локальная Chroma vector DB
+│   ├── catalog/             # локальный SQLite catalog.db
+│   └── metadata/            # локальные extracted metadata JSON
 ├── eval/
 │   └── eval_queries.example.json # пример retrieval eval cases
 ├── tests/
@@ -117,10 +151,13 @@ SQLite нужен не вместо Chroma. Их роли разные:
 │   ├── ocr.py               # OCR pipeline: image -> raw/cleaned txt
 │   ├── chunk.py             # chunking pipeline: cleaned txt -> chunks.jsonl
 │   ├── embed.py             # embedding pipeline: chunks.jsonl -> Chroma
+│   ├── catalog.py           # базовый SQLite-каталог cleaned-документов
+│   ├── extract_metadata.py  # scaffold для LLM metadata extraction
 │   ├── eval.py              # простой retrieval smoke test
 │   ├── search.py            # retrieval MVP: query -> context chunks
 │   ├── ask.py               # RAG Q&A MVP: question -> retrieval -> LLM answer
-│   └── schemas.py           # общие типы данных
+│   ├── schemas.py           # общие типы данных
+│   └── private_owners.example.json # обезличенный пример owner mapping
 ├── pyproject.toml           # настройки форматирования
 ├── requirements.txt         # зависимости проекта
 ├── README.md                # точка входа в проект
@@ -140,6 +177,8 @@ python -m src.chunk
 python -m src.embed
 python -m src.search "ваш вопрос для получения нужного чанка"
 python -m src.ask "ваш вопрос к llm"
+python -m src.catalog
+python -m src.extract_metadata
 ```
 
 Первый запуск `src.embed` требует интернет: модель `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` скачивается с Hugging Face и затем используется из локального кэша.
@@ -158,6 +197,8 @@ OPENAI_MODEL=your_model_name_here
 ```
 
 `.env` игнорируется git и предназначен только для локальных секретов и настроек.
+
+`src.extract_metadata` пока не вызывает OpenAI API и не пишет JSON. Это scaffold для следующего шага metadata extraction.
 
 ## Retrieval MVP
 

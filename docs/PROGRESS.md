@@ -14,8 +14,9 @@ MVP OCR/RAG уже работает:
 - [x] hybrid retrieval: vector search + BM25 + RRF
 - [x] retrieval eval baseline
 - [x] RAG Q&A через `src.ask`
-- [ ] SQLite Catalog
-- [ ] metadata extraction
+- [x] базовый SQLite Catalog через `src.catalog`
+- [x] scaffold для metadata extraction через `src.extract_metadata`
+- [ ] LLM metadata extraction в `output/metadata/*.json`
 - [ ] фильтрация по владельцу, дате, типу документа, врачу, клинике
 
 ## Текущий Pipeline
@@ -24,78 +25,102 @@ MVP OCR/RAG уже работает:
 input images -> OCR -> output/cleaned/*.txt -> chunk.py -> chunks.jsonl -> Chroma -> search/ask
 ```
 
-## Следующий Большой Блок
-
-Добавить SQLite Catalog рядом с текущим flow.
-
-Цель каталога:
-
-- хранить документы как объекты
-- связать файл с владельцем, датой, типом документа и будущими metadata
-- подготовить основу для фильтрации и более надёжных ответов
-- не ломать существующий Chroma-based поиск
-
-SQLite добавляется как соседняя ветка:
+Параллельные структурные ветки:
 
 ```text
 output/cleaned/*.txt
 ├── chunk.py -> chunks.jsonl -> Chroma -> search/ask
-└── catalog.py -> SQLite
+├── catalog.py -> output/catalog/catalog.db
+└── extract_metadata.py -> output/metadata/*.json (следующий шаг)
 ```
 
-Существующий RAG сохраняется. `search.py` и `ask.py` не меняются, пока каталог не будет создан, заполнен и отдельно обсуждён.
+## Следующий Большой Блок
+
+Добавить LLM metadata extraction рядом с текущим flow.
+
+Цель metadata extraction:
+
+- читать `output/cleaned/*.txt`
+- отправлять OCR-текст в LLM
+- получать structured JSON по `DocumentMetadata`
+- сохранять отдельные файлы `output/metadata/*.json`
+- не писать в SQLite на этом шаге
+- не ломать существующий Chroma-based поиск и RAG
+
+Существующий RAG сохраняется. `chunk.py`, `search.py`, `ask.py`, `chunks.jsonl` и Chroma не меняются, пока metadata extraction не будет отдельно проверена.
+
+## Уже Сделано По Каталогу
+
+`src.catalog` уже:
+
+- создаёт `output/catalog/catalog.db`
+- создаёт таблицу `documents`
+- читает `output/cleaned/*.txt`
+- добавляет документы по `source`
+- запускается через `python -m src.catalog`
+- не подключён к `search.py` и `ask.py`
 
 ## План Маленькими Шагами
 
 ### Шаг 0: приватность владельцев
 
-- [ ] хранить реальные имена только в локальном `src/private_owners.json`
-- [ ] держать `src/private_owners.json` вне git и не добавлять его в историю
-- [ ] коммитить только обезличенный пример `src/private_owners.example.json`
+- [x] хранить реальные имена только в локальном `src/private_owners.json`
+- [x] держать `src/private_owners.json` вне git и не добавлять его в историю
+- [x] коммитить только обезличенный пример `src/private_owners.example.json`
 - [ ] в extracted metadata сохранять псевдонимы вроде `person_1`, `cat_1`, а не реальные имена
 - [ ] перед пушем проверять, что приватный словарь и metadata JSON не попали в tracked files
 
-### Шаг 1: схема
+### Шаг 1: SQLite Catalog MVP
 
-- [ ] посмотреть текущую структуру проекта
-- [ ] предложить минимальную SQLite-схему
-- [ ] обсудить `documents`
-- [ ] обсудить, нужна ли таблица `chunks` сейчас или позже
-- [ ] не менять код без подтверждения
+- [x] посмотреть текущую структуру проекта
+- [x] предложить минимальную SQLite-схему
+- [x] обсудить `documents`
+- [x] не добавлять таблицу `chunks` на первом шаге
+- [x] добавить `src/catalog.py`
+- [x] создавать SQLite базу `output/catalog/catalog.db`
+- [x] создавать таблицу `documents`
+- [x] читать `output/cleaned/*.txt`
+- [x] делать insert с `ON CONFLICT(source) DO NOTHING`
+- [x] добавить запуск `python -m src.catalog`
+- [x] не подключать это к `search.py` и `ask.py`
 
-### Шаг 2: `src/db.py`
+### Шаг 2: Metadata Extraction Scaffold
 
-- [ ] добавить минимальный модуль `src/db.py`
-- [ ] создавать SQLite базу `output/catalog/catalog.db`
-- [ ] создавать таблицу `documents`
-- [ ] добавить функцию `init_db()`
-- [ ] не подключать это к `search.py` и `ask.py`
+- [x] добавить `src/extract_metadata.py`
+- [x] добавить `output/metadata/.gitkeep`
+- [x] игнорировать `output/metadata/*`
+- [x] добавить `DocumentMetadata`
+- [x] добавить `METADATA_JSON_SCHEMA`
+- [x] сделать `confidence` числом от `0` до `1`
+- [x] добавить `build_prompt(source, text)`
+- [x] запускать `python -m src.extract_metadata`
+- [x] пока только печатать найденные cleaned-документы
 
-### Шаг 3: заполнение каталога
+### Шаг 3: Первый LLM Прогон
 
-- [ ] добавить `src/catalog.py` или `src/ingest_catalog.py`
-- [ ] читать `output/cleaned/*.txt`
-- [ ] создавать или обновлять записи `documents`
-- [ ] сделать upsert по `source` или `filename`
+- [ ] добавить OpenAI client в `src.extract_metadata`
+- [ ] использовать `.env`: `OPENAI_API_KEY`, `OPENAI_MODEL`
+- [ ] отправить один cleaned-документ в LLM
+- [ ] использовать structured output через `METADATA_JSON_SCHEMA`
+- [ ] распарсить ответ через `json.loads`
+- [ ] сохранить `output/metadata/<source-stem>.json`
+- [ ] убедиться, что metadata JSON ignored и не попадает в git
 - [ ] не менять `chunk.py`, `search.py`, `ask.py`
 
-Начальные поля:
+### Шаг 4: Удобный CLI Для Metadata
 
-- `id`
-- `source`
-- `filename`
-- `owner`
-- `doc_type`
-- `doc_date`
-- `created_at`
-- `updated_at`
+- [ ] добавить `--limit`
+- [ ] добавить `--force`
+- [ ] пропускать существующие JSON без `--force`
+- [ ] печатать created/skipped/errors
+- [ ] обрабатывать ошибки одного документа без остановки всего запуска
 
-### Шаг 4: CLI
+### Шаг 5: Owner Normalization
 
-- [ ] добавить запуск `python -m src.catalog`
-- [ ] инициализировать базу
-- [ ] заполнить `documents`
-- [ ] вывести количество добавленных и обновлённых документов
+- [ ] загрузить локальный `src/private_owners.json`, если он есть
+- [ ] заменить реальные имена в `owner` на псевдонимы
+- [ ] не сохранять реальные owner names в metadata JSON
+- [ ] добавить warning, если owner найден в тексте, но не найден в словаре
 
 ## Guardrails
 
@@ -103,7 +128,7 @@ output/cleaned/*.txt
 
 - не переписываем архитектуру целиком
 - не переписываем текущий RAG
-- не внедряем LLM metadata extraction
+- не пишем LLM metadata напрямую в SQLite
 - не мигрируем Chroma
 - не меняем формат `chunks.jsonl`
 - не меняем существующий поиск без отдельного обсуждения
