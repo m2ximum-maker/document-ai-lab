@@ -56,6 +56,9 @@ eval/*local*.json
 output/catalog/*
 !output/catalog/.gitkeep
 
+# Owners
+private_owners.json
+
 # Extracted metadata
 output/metadata/*
 !output/metadata/.gitkeep
