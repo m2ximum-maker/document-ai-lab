@@ -22,14 +22,13 @@ def import_documents(connection: sqlite3.Connection) -> None:
             INSERT INTO documents (
                 source,
                 filename,
-                owner,
+                subject,
                 doc_type,
                 doc_date,
                 created_at
             )
             VALUES (?, ?, NULL, NULL, NULL, ?)
-            ON CONFLICT(source) DO UPDATE SET
-                filename = excluded.filename
+            ON CONFLICT(source) DO NOTHING
             """,
             (source, filename, now),
         )
@@ -46,7 +45,7 @@ def init_db() -> sqlite3.Connection:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source TEXT UNIQUE NOT NULL,
             filename TEXT NOT NULL,
-            owner TEXT NULL,
+            subject TEXT NULL,
             doc_type TEXT NULL,
             doc_date TEXT NULL,
             created_at TEXT NOT NULL
